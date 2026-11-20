@@ -1,0 +1,6 @@
+{
+  "name": "RUTEO",
+  "description": "Aplicación inteligente para organizar entregas y optimizar recorridos de repartidores.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
