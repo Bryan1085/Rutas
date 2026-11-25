@@ -10,6 +10,11 @@ interface DriverInfo {
   lng: number;
 }
 
+interface RouteDriverOption {
+  id: string;
+  driverName: string;
+}
+
 interface HeaderProps {
   onOpenSettings: () => void;
   onOpenSavedRoutes: () => void;
@@ -19,6 +24,7 @@ interface HeaderProps {
   onSignIn: () => void;
   onSignOut: () => void;
   remoteDrivers: DriverInfo[];
+  routeDrivers?: RouteDriverOption[];
   selectedDriverId: string | null;
   onSelectDriver: (driverId: string | null) => void;
 }
@@ -32,9 +38,14 @@ export const Header: React.FC<HeaderProps> = ({
   onSignIn,
   onSignOut,
   remoteDrivers,
+  routeDrivers,
   selectedDriverId,
   onSelectDriver
 }) => {
+  const driverOptions: RouteDriverOption[] = routeDrivers && routeDrivers.length > 0
+    ? routeDrivers
+    : remoteDrivers.map(d => ({ id: d.id, driverName: d.driverName }));
+
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -53,7 +64,7 @@ export const Header: React.FC<HeaderProps> = ({
 
           {/* Driver Route Selector & Controls */}
           <div className="flex items-center gap-2.5">
-            {/* Driver Route Filter Dropdown */}
+            {/* Driver Route Filter Dropdown (Desktop) */}
             <div className="hidden md:flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
               <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
               <span className="text-[11px] font-bold text-gray-600">Ruta de:</span>
@@ -68,9 +79,9 @@ export const Header: React.FC<HeaderProps> = ({
                     Tú ({user.displayName || user.email?.split('@')[0] || 'Conductor'})
                   </option>
                 )}
-                {remoteDrivers.map(d => (
+                {driverOptions.map(d => (
                   <option key={d.id} value={d.id}>
-                    {d.driverName}
+                    {d.driverName} (Solo lectura)
                   </option>
                 ))}
               </select>
@@ -145,6 +156,31 @@ export const Header: React.FC<HeaderProps> = ({
                 <span>Conectar</span>
               </button>
             )}
+          </div>
+        </div>
+
+        {/* Driver Route Filter Bar (Mobile) */}
+        <div className="flex md:hidden items-center justify-between gap-2 pb-2.5">
+          <div className="flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5 w-full">
+            <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span className="text-[11px] font-bold text-gray-600 shrink-0">Ruta de:</span>
+            <select
+              value={selectedDriverId || 'all'}
+              onChange={e => onSelectDriver(e.target.value === 'all' ? null : e.target.value)}
+              className="bg-transparent text-xs font-bold text-gray-900 outline-none cursor-pointer flex-1 min-w-0"
+            >
+              <option value="all">Todos los conductores</option>
+              {user && (
+                <option value={user.uid}>
+                  Tú ({user.displayName || user.email?.split('@')[0] || 'Conductor'})
+                </option>
+              )}
+              {driverOptions.map(d => (
+                <option key={d.id} value={d.id}>
+                  {d.driverName} (Solo lectura)
+                </option>
+              ))}
+            </select>
           </div>
         </div>
       </div>

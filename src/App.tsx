@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { DeliveryItem, RouteSession, GpsPosition } from './types';
 import { QuotaBanner } from './components/QuotaBanner';
 import { Header } from './components/Header';
@@ -122,10 +122,35 @@ export default function App() {
     currentGps
   );
 
+  // Ownership helper: when signed in, only packages assigned to user.uid are editable
+  const canEditItem = (item: DeliveryItem) =>
+    user ? item.assignedDriverId === user.uid : !item.assignedDriverId;
+
+  // Combined list of other drivers (active GPS drivers + owners of synced packages)
+  const routeDrivers = useMemo(() => {
+    const map = new Map<string, { id: string; driverName: string }>();
+    remoteDrivers.forEach(d => {
+      map.set(d.id, { id: d.id, driverName: d.driverName });
+    });
+    items.forEach(item => {
+      if (item.assignedDriverId && item.assignedDriverId !== user?.uid) {
+        if (!map.has(item.assignedDriverId)) {
+          map.set(item.assignedDriverId, {
+            id: item.assignedDriverId,
+            driverName: item.assignedDriverName || 'Otro conductor'
+          });
+        }
+      }
+    });
+    return Array.from(map.values());
+  }, [remoteDrivers, items, user?.uid]);
+
   // Filtered items based on selected driver route
   const displayedItems = selectedDriverId
-    ? items.filter(i => i.assignedDriverId === selectedDriverId || !i.assignedDriverId)
+    ? items.filter(i => i.assignedDriverId === selectedDriverId)
     : items;
+
+  const editableDisplayedItems = displayedItems.filter(canEditItem);
 
   // Modals state
   const [isInputOpen, setIsInputOpen] = useState<boolean>(false);
@@ -206,12 +231,11 @@ export default function App() {
   };
 
   const handleAddItems = (newItems: DeliveryItem[]) => {
+    const ownerName = user?.displayName || user?.email?.split('@')[0] || undefined;
     const assignedNewItems = newItems.map(item => ({
       ...item,
-      assignedDriverId: selectedDriverId || user?.uid || undefined,
-      assignedDriverName: selectedDriverId 
-        ? remoteDrivers.find(d => d.id === selectedDriverId)?.driverName 
-        : (user?.displayName || user?.email?.split('@')[0] || undefined)
+      assignedDriverId: user?.uid || undefined,
+      assignedDriverName: ownerName
     }));
 
     setItems(prev => {
@@ -219,31 +243,45 @@ export default function App() {
       assignedNewItems.forEach(item => syncItemToFirestore(item));
       return combined;
     });
+
+    if (selectedDriverId && selectedDriverId !== user?.uid) {
+      setSelectedDriverId(null);
+    }
   };
 
   const handleUpdateStatus = (id: string, status: DeliveryItem['status']) => {
-    setItems(prev => {
-      const updated = prev.map(item => {
-        if (item.id === id) {
-          const newItem = { ...item, status };
-          syncItemToFirestore(newItem);
-          return newItem;
-        }
-        return item;
-      });
-      return updated;
-    });
+    setItems(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        if (!canEditItem(item)) return item;
+        const newItem = { ...item, status };
+        syncItemToFirestore(newItem);
+        return newItem;
+      })
+    );
   };
 
   const handleSaveEditItem = (updated: DeliveryItem) => {
-    setItems(prev => prev.map(item => (item.id === updated.id ? updated : item)));
-    syncItemToFirestore(updated);
+    setItems(prev =>
+      prev.map(item => {
+        if (item.id !== updated.id) return item;
+        if (!canEditItem(item)) return item;
+        const nextItem: DeliveryItem = {
+          ...updated,
+          assignedDriverId: item.assignedDriverId,
+          assignedDriverName: item.assignedDriverName
+        };
+        syncItemToFirestore(nextItem);
+        return nextItem;
+      })
+    );
   };
 
   const handleSaveDeliveryPhoto = (id: string, photoDataUrl: string | undefined, markDelivered?: boolean) => {
     setItems(prev =>
       prev.map(item => {
         if (item.id !== id) return item;
+        if (!canEditItem(item)) return item;
         const updated: DeliveryItem = {
           ...item,
           deliveryPhoto: photoDataUrl,
@@ -257,29 +295,37 @@ export default function App() {
   };
 
   const handleDeleteItem = (id: string) => {
+    const target = items.find(item => item.id === id);
+    if (!target || !canEditItem(target)) return;
     setItems(prev => prev.filter(item => item.id !== id));
-    deleteItemFromFirestore(id);
+    deleteItemFromFirestore(id, target.assignedDriverId);
   };
 
   const handleClearAllItems = () => {
-    if (confirm('¿Estás seguro de eliminar todas las ubicaciones actuales?')) {
-      items.forEach(i => deleteItemFromFirestore(i.id));
-      setItems([]);
+    if (confirm('¿Estás seguro de eliminar tus paquetes actuales?')) {
+      items.filter(canEditItem).forEach(i => deleteItemFromFirestore(i.id, i.assignedDriverId));
+      setItems(prev => prev.filter(i => !canEditItem(i)));
     }
   };
 
   const handleApplyOptimizedItems = (optimized: DeliveryItem[]) => {
-    setItems(optimized);
-    optimized.forEach(item => syncItemToFirestore(item));
+    const safeOptimized = optimized.filter(canEditItem);
+    const optimizedMap = new Map(safeOptimized.map(item => [item.id, item]));
+    setItems(prev => {
+      const others = prev.filter(item => !optimizedMap.has(item.id) && !canEditItem(item));
+      return [...safeOptimized, ...others];
+    });
+    safeOptimized.forEach(item => syncItemToFirestore(item));
   };
 
   const handleSaveCurrentRoute = () => {
-    if (items.length === 0) return;
+    const ownItems = items.filter(canEditItem);
+    if (ownItems.length === 0) return;
     const newSession: RouteSession = {
       id: `session-${Date.now()}`,
       name: `Recorrido CR ${new Date().toLocaleDateString('es-ES', { day: 'numeric', month: 'short' })}`,
       date: new Date().toISOString(),
-      items: [...items],
+      items: [...ownItems],
       status: 'saved',
       totalDistanceKm: 18.5,
       totalMinutes: 65,
@@ -290,8 +336,17 @@ export default function App() {
   };
 
   const handleLoadRoute = (route: RouteSession) => {
-    setItems(route.items);
-    route.items.forEach(item => syncItemToFirestore(item));
+    const ownerName = user?.displayName || user?.email?.split('@')[0] || undefined;
+    const assignedLoaded = route.items.map(item => ({
+      ...item,
+      assignedDriverId: user?.uid || undefined,
+      assignedDriverName: ownerName
+    }));
+    setItems(prev => {
+      const otherDriversItems = user ? prev.filter(i => i.assignedDriverId && i.assignedDriverId !== user.uid) : [];
+      return [...assignedLoaded, ...otherDriversItems];
+    });
+    assignedLoaded.forEach(item => syncItemToFirestore(item));
   };
 
   const handleDeleteRoute = (id: string) => {
@@ -323,6 +378,7 @@ export default function App() {
         onSignIn={signIn}
         onSignOut={signOut}
         remoteDrivers={remoteDrivers}
+        routeDrivers={routeDrivers}
         selectedDriverId={selectedDriverId}
         onSelectDriver={setSelectedDriverId}
       />
@@ -331,7 +387,7 @@ export default function App() {
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 flex-1 w-full space-y-6">
         {/* Interactive Map Section */}
         {showMap && (
-          <div className="w-full h-[400px] md:h-[500px] shadow-2xl rounded-3xl overflow-hidden transition-all border border-gray-200 relative">
+          <div className="w-full h-[400px] md:h-[500px] shadow-2xl rounded-3xl overflow-hidden transition-all border border-gray-200 relative isolate z-0">
             {/* Map Provider Switcher (Google Maps vs 100% Free OpenStreetMap) */}
             <div className="absolute top-3 right-14 z-[460] bg-white/95 backdrop-blur-xs border border-gray-200 rounded-xl p-1 shadow-md flex items-center gap-1 text-[11px] font-bold">
               <button
@@ -361,6 +417,7 @@ export default function App() {
             {mapProvider === 'free' ? (
               <FreeMapView
                 items={displayedItems}
+                currentUserId={user?.uid || null}
                 currentGps={currentGps}
                 selectedPackageId={selectedPackageId}
                 onUpdateStatus={handleUpdateStatus}
@@ -370,6 +427,7 @@ export default function App() {
             ) : (
               <MapView
                 items={displayedItems}
+                currentUserId={user?.uid || null}
                 currentGps={currentGps}
                 selectedPackageId={selectedPackageId}
                 onUpdateStatus={handleUpdateStatus}
@@ -388,12 +446,16 @@ export default function App() {
         {/* Dashboard Content */}
         <MainDashboard
           items={displayedItems}
+          currentUserId={user?.uid || null}
+          currentGps={currentGps}
           onOpenInputModal={() => setIsInputOpen(true)}
           onOpenOptimizerModal={() => setIsOptimizerOpen(true)}
           onOpenNavigationModal={() => setIsNavOpen(true)}
           onOpenSavedRoutesModal={() => setIsSavedRoutesOpen(true)}
           onUpdateStatus={handleUpdateStatus}
-          onEditItem={item => setEditingItem(item)}
+          onEditItem={item => {
+            if (canEditItem(item)) setEditingItem(item);
+          }}
           onOpenPhotoModal={item => setPhotoModalItemId(item.id)}
           onSelectPackage={id => {
             setSelectedPackageId(null);
@@ -421,13 +483,13 @@ export default function App() {
         isOpen={isInputOpen}
         onClose={() => setIsInputOpen(false)}
         onAddItems={handleAddItems}
-        existingItems={items}
+        existingItems={items.filter(canEditItem)}
       />
 
       <RouteOptimizationModal
         isOpen={isOptimizerOpen}
         onClose={() => setIsOptimizerOpen(false)}
-        items={displayedItems}
+        items={editableDisplayedItems}
         currentGps={currentGps}
         onApplyOptimizedItems={handleApplyOptimizedItems}
       />
@@ -435,7 +497,7 @@ export default function App() {
       <ActiveNavigationModal
         isOpen={isNavOpen}
         onClose={() => setIsNavOpen(false)}
-        items={displayedItems}
+        items={editableDisplayedItems}
         onUpdateStatus={handleUpdateStatus}
         onOpenPhotoModal={item => setPhotoModalItemId(item.id)}
         onFinishRoute={handleSaveCurrentRoute}
@@ -448,7 +510,7 @@ export default function App() {
         onLoadRoute={handleLoadRoute}
         onDeleteRoute={handleDeleteRoute}
         onSaveCurrentRoute={handleSaveCurrentRoute}
-        hasCurrentItems={items.length > 0}
+        hasCurrentItems={items.some(canEditItem)}
       />
 
       <SettingsModal
@@ -471,6 +533,7 @@ export default function App() {
         onClose={() => setPhotoModalItemId(null)}
         item={photoModalItem}
         onSavePhoto={handleSaveDeliveryPhoto}
+        readOnly={photoModalItem ? !canEditItem(photoModalItem) : false}
       />
 
       <OfflineIndicator />

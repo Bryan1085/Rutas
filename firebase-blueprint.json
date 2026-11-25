@@ -2,7 +2,7 @@
   "entities": {
     "DeliveryItem": {
       "title": "Delivery Item",
-      "description": "A package delivery destination",
+      "description": "A package delivery destination owned by a driver",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
@@ -14,18 +14,20 @@
         "status": { "type": "string", "enum": ["pending", "in_transit", "delivered", "failed"] },
         "coverageStatus": { "type": "string", "enum": ["in_coverage", "out_of_coverage", "incomplete"] },
         "province": { "type": "string", "maxLength": 100 },
-        "orderIndex": { "type": "number" },
+        "recipientName": { "type": "string", "maxLength": 120 },
         "phone": { "type": "string", "maxLength": 50 },
+        "notes": { "type": "string", "maxLength": 1000 },
+        "orderIndex": { "type": "number" },
         "distanceFromPrevKm": { "type": "number" },
         "estimatedMinutes": { "type": "number" },
         "assignedDriverId": { "type": "string", "maxLength": 128 },
         "assignedDriverName": { "type": "string", "maxLength": 100 },
         "deliveryPhoto": { "type": "string", "maxLength": 600000 },
         "deliveryPhotoAt": { "type": "string", "maxLength": 100 },
-        "updatedAt": { "type": "string" },
-        "createdAt": { "type": "string" }
+        "updatedAt": { "type": "string", "maxLength": 100 },
+        "createdAt": { "type": "string", "maxLength": 100 }
       },
-      "required": ["id", "originalNumber", "address", "lat", "lng", "status", "coverageStatus", "orderIndex"]
+      "required": ["id", "originalNumber", "address", "lat", "lng", "status", "coverageStatus", "orderIndex", "assignedDriverId"]
     },
     "DriverLocation": {
       "title": "Driver Location",
@@ -44,10 +46,11 @@
     },
     "RouteSession": {
       "title": "Route Session",
-      "description": "A saved route session",
+      "description": "A saved route session owned by a driver",
       "type": "object",
       "properties": {
         "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "ownerId": { "type": "string", "maxLength": 128 },
         "name": { "type": "string", "maxLength": 200 },
         "date": { "type": "string", "maxLength": 100 },
         "status": { "type": "string", "maxLength": 50 },
@@ -55,13 +58,13 @@
         "totalMinutes": { "type": "number" },
         "createdAt": { "type": "number" }
       },
-      "required": ["id", "name", "date", "status"]
+      "required": ["id", "ownerId", "name", "date", "status"]
     }
   },
   "firestore": {
     "/deliveries/{deliveryId}": {
       "schema": { "$ref": "#/entities/DeliveryItem" },
-      "description": "Shared delivery packages across drivers"
+      "description": "Delivery packages visible to signed-in drivers, writable only by owning driver"
     },
     "/drivers/{driverId}": {
       "schema": { "$ref": "#/entities/DriverLocation" },

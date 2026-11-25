@@ -9,13 +9,15 @@ interface DeliveryPhotoModalProps {
   onClose: () => void;
   item: DeliveryItem | null;
   onSavePhoto: (id: string, photoDataUrl: string | undefined, markDelivered?: boolean) => void;
+  readOnly?: boolean;
 }
 
 export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
   isOpen,
   onClose,
   item,
-  onSavePhoto
+  onSavePhoto,
+  readOnly = false
 }) => {
   const [previewUrl, setPreviewUrl] = useState<string | undefined>(undefined);
   const [processing, setProcessing] = useState(false);
@@ -39,6 +41,7 @@ export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
   if (!isOpen || !item) return null;
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (readOnly) return;
     const file = e.target.files?.[0];
     if (!file) return;
     setProcessing(true);
@@ -146,7 +149,7 @@ export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[1300] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-gray-100 flex flex-col max-h-[92vh]">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-emerald-50">
@@ -156,7 +159,11 @@ export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
             </div>
             <div>
               <h2 className="text-base font-black text-gray-900">Foto de Entrega #{item.originalNumber}</h2>
-              <p className="text-xs text-emerald-800 truncate max-w-[230px]">{item.address}</p>
+              <p className="text-xs text-emerald-800 truncate max-w-[230px]">
+                {readOnly
+                  ? `Solo lectura • ${item.assignedDriverName || 'Otro conductor'}`
+                  : item.address}
+              </p>
             </div>
           </div>
           <button
@@ -205,14 +212,16 @@ export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
                 alt={`Entrega paquete #${item.originalNumber}`}
                 className="w-full max-h-64 object-contain mx-auto"
               />
-              <button
-                type="button"
-                onClick={() => setPreviewUrl(undefined)}
-                className="absolute top-2.5 right-2.5 bg-red-600/90 hover:bg-red-700 text-white p-2 rounded-xl shadow-md transition-colors"
-                title="Quitar foto"
-              >
-                <Trash2 className="w-4 h-4" />
-              </button>
+              {!readOnly && (
+                <button
+                  type="button"
+                  onClick={() => setPreviewUrl(undefined)}
+                  className="absolute top-2.5 right-2.5 bg-red-600/90 hover:bg-red-700 text-white p-2 rounded-xl shadow-md transition-colors"
+                  title="Quitar foto"
+                >
+                  <Trash2 className="w-4 h-4" />
+                </button>
+              )}
             </div>
           ) : (
             <div className="h-48 bg-gray-50 border-2 border-dashed border-gray-300 rounded-2xl flex flex-col items-center justify-center gap-3 p-4 text-center">
@@ -221,30 +230,36 @@ export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
               </div>
               <div>
                 <p className="text-xs font-bold text-gray-800">Sin foto de entrega</p>
-                <p className="text-[11px] text-gray-500">Toma una foto con la cámara o selecciona una imagen.</p>
+                <p className="text-[11px] text-gray-500">
+                  {readOnly
+                    ? 'Este paquete pertenece a otro conductor y no tiene foto aún.'
+                    : 'Toma una foto con la cámara o selecciona una imagen.'}
+                </p>
               </div>
             </div>
           )}
 
           {/* Capture / Upload buttons */}
-          <div className="grid grid-cols-2 gap-2.5">
-            <button
-              type="button"
-              onClick={() => cameraInputRef.current?.click()}
-              className="bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors"
-            >
-              <Camera className="w-4 h-4" />
-              <span>{previewUrl ? 'Tomar otra' : 'Tomar Foto'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => galleryInputRef.current?.click()}
-              className="bg-gray-100 hover:bg-gray-200 text-gray-800 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-gray-200 transition-colors"
-            >
-              <Upload className="w-4 h-4" />
-              <span>Subir Imagen</span>
-            </button>
-          </div>
+          {!readOnly && (
+            <div className="grid grid-cols-2 gap-2.5">
+              <button
+                type="button"
+                onClick={() => cameraInputRef.current?.click()}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+              >
+                <Camera className="w-4 h-4" />
+                <span>{previewUrl ? 'Tomar otra' : 'Tomar Foto'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => galleryInputRef.current?.click()}
+                className="bg-gray-100 hover:bg-gray-200 text-gray-800 py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 border border-gray-200 transition-colors"
+              >
+                <Upload className="w-4 h-4" />
+                <span>Subir Imagen</span>
+              </button>
+            </div>
+          )}
 
           {/* Forward / Share Section */}
           {previewUrl && (
@@ -320,7 +335,7 @@ export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
             Cerrar
           </button>
 
-          {previewUrl && item.status !== 'delivered' && (
+          {!readOnly && previewUrl && item.status !== 'delivered' && (
             <button
               type="button"
               onClick={() => {
@@ -334,16 +349,18 @@ export const DeliveryPhotoModal: React.FC<DeliveryPhotoModalProps> = ({
             </button>
           )}
 
-          <button
-            type="button"
-            onClick={() => {
-              onSavePhoto(item.id, previewUrl, false);
-              onClose();
-            }}
-            className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md transition-colors"
-          >
-            Guardar Foto
-          </button>
+          {!readOnly && (
+            <button
+              type="button"
+              onClick={() => {
+                onSavePhoto(item.id, previewUrl, false);
+                onClose();
+              }}
+              className="bg-emerald-600 hover:bg-emerald-500 text-white px-4 py-2.5 rounded-xl text-xs font-bold shadow-md transition-colors"
+            >
+              Guardar Foto
+            </button>
+          )}
         </div>
       </div>
     </div>

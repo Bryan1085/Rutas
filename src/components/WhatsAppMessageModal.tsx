@@ -38,7 +38,7 @@ export const WhatsAppMessageModal: React.FC<WhatsAppMessageModalProps> = ({
   const previewText = (template || DEFAULT_LOCATION_REQUEST_TEMPLATE).replace(/\{paquete\}/gi, '3');
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+    <div className="fixed inset-0 z-[1200] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
       <div className="bg-white rounded-3xl max-w-md w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-gray-100 flex flex-col">
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-green-50">

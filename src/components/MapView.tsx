@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { APIProvider, Map, AdvancedMarker, InfoWindow, useMap, useMapsLibrary } from '@vis.gl/react-google-maps';
 import { DeliveryItem, GpsPosition } from '../types';
-import { Navigation, CheckCircle2, AlertCircle, ExternalLink, ShieldAlert, Route as RouteIcon, Loader2, Users, MessageCircle, Camera, MapPin } from 'lucide-react';
+import { Navigation, CheckCircle2, AlertCircle, ExternalLink, ShieldAlert, Route as RouteIcon, Loader2, Users, MessageCircle, Camera, MapPin, Lock, Eye } from 'lucide-react';
 import { calculateDistanceKm, buildWhatsAppUrl, buildLocationRequestMessage } from '../utils/whatsappParser';
 
 interface MapViewProps {
   items: DeliveryItem[];
+  currentUserId?: string | null;
   currentGps: GpsPosition | null;
   selectedPackageId: string | null;
   onUpdateStatus: (id: string, status: DeliveryItem['status']) => void;
@@ -249,6 +250,7 @@ const MapRouteHandler: React.FC<{
 
 export const MapView: React.FC<MapViewProps> = ({
   items,
+  currentUserId = null,
   currentGps,
   selectedPackageId,
   onUpdateStatus,
@@ -258,6 +260,9 @@ export const MapView: React.FC<MapViewProps> = ({
   remoteDrivers = []
 }) => {
   const [selectedItem, setSelectedItem] = useState<DeliveryItem | null>(null);
+  const isSelectedOwner = selectedItem
+    ? (currentUserId ? selectedItem.assignedDriverId === currentUserId : !selectedItem.assignedDriverId)
+    : false;
   const [routeStatus, setRouteStatus] = useState<{
     loading: boolean;
     error: string | null;
@@ -495,41 +500,61 @@ export const MapView: React.FC<MapViewProps> = ({
                     </a>
                   </div>
 
+                  {!isSelectedOwner && (
+                    <div className="bg-indigo-50 border border-indigo-200 text-indigo-800 px-2.5 py-1.5 rounded-lg text-[11px] font-bold flex items-center gap-1.5">
+                      <Lock className="w-3 h-3 shrink-0" />
+                      <span>De: {selectedItem.assignedDriverName || 'Otro conductor'} (Solo lectura)</span>
+                    </div>
+                  )}
+
                   {selectedItem.coverageStatus === 'in_coverage' && (
-                    <div className="space-y-1.5 pt-1">
+                    isSelectedOwner ? (
+                      <div className="space-y-1.5 pt-1">
+                        <button
+                          onClick={() => {
+                            onOpenPhotoModal(selectedItem);
+                            setSelectedItem(null);
+                          }}
+                          className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 px-2.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                        >
+                          <Camera className="w-3.5 h-3.5" />
+                          <span>{selectedItem.deliveryPhoto ? 'Ver / Reenviar Foto' : 'Foto de Entrega'}</span>
+                        </button>
+                        <div className="grid grid-cols-2 gap-1">
+                          <button
+                            onClick={() => {
+                              onUpdateStatus(selectedItem.id, 'delivered');
+                              setSelectedItem(null);
+                            }}
+                            className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-emerald-200"
+                          >
+                            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Entregar</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              onUpdateStatus(selectedItem.id, 'failed');
+                              setSelectedItem(null);
+                            }}
+                            className="bg-red-50 hover:bg-red-100 text-red-800 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-red-200"
+                          >
+                            <AlertCircle className="w-3.5 h-3.5 text-red-600" />
+                            <span>Fallida</span>
+                          </button>
+                        </div>
+                      </div>
+                    ) : selectedItem.deliveryPhoto ? (
                       <button
                         onClick={() => {
                           onOpenPhotoModal(selectedItem);
                           setSelectedItem(null);
                         }}
-                        className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-1.5 px-2.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 shadow-2xs transition-colors"
+                        className="w-full bg-indigo-100 hover:bg-indigo-200 text-indigo-800 py-1.5 px-2.5 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1.5 border border-indigo-200 transition-colors"
                       >
-                        <Camera className="w-3.5 h-3.5" />
-                        <span>{selectedItem.deliveryPhoto ? 'Ver / Reenviar Foto' : 'Foto de Entrega'}</span>
+                        <Eye className="w-3.5 h-3.5" />
+                        <span>Ver Foto (Solo lectura)</span>
                       </button>
-                      <div className="grid grid-cols-2 gap-1">
-                        <button
-                          onClick={() => {
-                            onUpdateStatus(selectedItem.id, 'delivered');
-                            setSelectedItem(null);
-                          }}
-                          className="bg-emerald-50 hover:bg-emerald-100 text-emerald-800 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-emerald-200"
-                        >
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                          <span>Entregar</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            onUpdateStatus(selectedItem.id, 'failed');
-                            setSelectedItem(null);
-                          }}
-                          className="bg-red-50 hover:bg-red-100 text-red-800 py-1.5 px-2 rounded-lg text-[11px] font-bold flex items-center justify-center gap-1 border border-red-200"
-                        >
-                          <AlertCircle className="w-3.5 h-3.5 text-red-600" />
-                          <span>Fallida</span>
-                        </button>
-                      </div>
-                    </div>
+                    ) : null
                   )}
                 </div>
               </div>

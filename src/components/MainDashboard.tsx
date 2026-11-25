@@ -1,11 +1,14 @@
 import React, { useState } from 'react';
-import { Plus, MapPin, Sparkles, Navigation, Trash2, Search, ShieldAlert, ChevronUp, ChevronDown, Edit3, Phone, MessageCircle, Camera, Send } from 'lucide-react';
-import { DeliveryItem } from '../types';
+import { Plus, MapPin, Sparkles, Navigation, Trash2, Search, ShieldAlert, ChevronUp, ChevronDown, Edit3, Phone, MessageCircle, Camera, Send, Share2, Lock, Eye } from 'lucide-react';
+import { DeliveryItem, GpsPosition } from '../types';
 import { buildWhatsAppUrl, buildLocationRequestMessage } from '../utils/whatsappParser';
 import { WhatsAppMessageModal } from './WhatsAppMessageModal';
+import { ShareRouteModal } from './ShareRouteModal';
 
 interface MainDashboardProps {
   items: DeliveryItem[];
+  currentUserId?: string | null;
+  currentGps?: GpsPosition | null;
   onOpenInputModal: () => void;
   onOpenOptimizerModal: () => void;
   onOpenNavigationModal: () => void;
@@ -22,6 +25,8 @@ interface MainDashboardProps {
 
 export const MainDashboard: React.FC<MainDashboardProps> = ({
   items,
+  currentUserId = null,
+  currentGps,
   onOpenInputModal,
   onOpenOptimizerModal,
   onOpenNavigationModal,
@@ -40,8 +45,16 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   const [coverageFilter, setCoverageFilter] = useState<string>('all');
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState<boolean>(true);
   const [isWhatsAppMsgOpen, setIsWhatsAppMsgOpen] = useState<boolean>(false);
+  const [isShareRouteOpen, setIsShareRouteOpen] = useState<boolean>(false);
 
-  const inCoverageItems = items.filter(i => i.coverageStatus === 'in_coverage' && i.hasLocation !== false);
+  const isOwnItem = (item: DeliveryItem) =>
+    currentUserId ? item.assignedDriverId === currentUserId : !item.assignedDriverId;
+
+  const locatedItemsCount = items.filter(i => i.hasLocation !== false && i.coverageStatus !== 'incomplete').length;
+
+  const myInCoverageItems = items.filter(
+    i => isOwnItem(i) && i.coverageStatus === 'in_coverage' && i.hasLocation !== false
+  );
   const outOfCoverageCount = items.filter(i => i.coverageStatus === 'out_of_coverage').length;
 
   const filteredItems = items.filter(item => {
@@ -58,10 +71,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   return (
     <div className="space-y-4 pb-16">
       {/* Compact Action Bar */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-2.5">
         <button
           onClick={onOpenOptimizerModal}
-          disabled={inCoverageItems.length === 0}
+          disabled={myInCoverageItems.length === 0}
           className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Sparkles className="w-4 h-4 shrink-0" />
@@ -77,11 +90,20 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             }
             onOpenNavigationModal();
           }}
-          disabled={inCoverageItems.length === 0}
+          disabled={myInCoverageItems.length === 0}
           className="bg-teal-600 hover:bg-teal-500 text-white px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
         >
           <Navigation className="w-4 h-4 transform rotate-45 shrink-0" />
           <span>Iniciar Ruta</span>
+        </button>
+
+        <button
+          onClick={() => setIsShareRouteOpen(true)}
+          disabled={locatedItemsCount === 0}
+          className="bg-sky-500 hover:bg-sky-600 text-white px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-sky-500/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Share2 className="w-4 h-4 shrink-0" />
+          <span>Compartir a Waze</span>
         </button>
 
         <button
@@ -94,7 +116,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
 
         <button
           onClick={() => setIsWhatsAppMsgOpen(true)}
-          className="bg-green-50 hover:bg-green-100 text-green-900 border border-green-300 px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-95"
+          className="col-span-2 sm:col-span-1 bg-green-50 hover:bg-green-100 text-green-900 border border-green-300 px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-95"
         >
           <MessageCircle className="w-4 h-4 text-green-700 shrink-0" />
           <span>Editar mensaje WhatsApp</span>
@@ -192,6 +214,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                 {filteredItems.map(item => {
+                  const isOwner = isOwnItem(item);
                   const isIncomplete = item.hasLocation === false || item.coverageStatus === 'incomplete';
                   const isFailed = item.status === 'failed';
                   const isDeliveredWithoutPhoto = item.status === 'delivered' && !item.deliveryPhoto;
@@ -199,7 +222,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                   return (
                     <div
                       key={item.id}
-                      onClick={() => (isIncomplete ? onEditItem(item) : onSelectPackage(item.id))}
+                      onClick={() => (isIncomplete && isOwner ? onEditItem(item) : onSelectPackage(item.id))}
                       className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 cursor-pointer hover:shadow-md ${
                         isIncomplete
                           ? 'bg-orange-50/95 border-orange-400 hover:border-orange-500'
@@ -339,6 +362,16 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                       </div>
 
                       <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end flex-wrap border-t sm:border-t-0 pt-2 sm:pt-0 border-gray-100" onClick={e => e.stopPropagation()}>
+                        {!isOwner && (
+                          <span
+                            className="bg-indigo-50 text-indigo-800 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-indigo-200 inline-flex items-center gap-1"
+                            title="Solo puedes editar los paquetes de tu propio perfil"
+                          >
+                            <Lock className="w-2.5 h-2.5 shrink-0" />
+                            <span>{item.assignedDriverName || 'Otro conductor'} • Solo lectura</span>
+                          </span>
+                        )}
+
                         {isIncomplete && (
                           <span className="bg-orange-100 text-orange-900 text-[10px] font-bold px-2.5 py-0.5 rounded-lg border border-orange-300">
                             Falta ubicación
@@ -370,20 +403,31 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                         )}
 
                         {/* Photo Button (Icon Only) */}
-                        <button
-                          onClick={() => onOpenPhotoModal(item)}
-                          className={`p-2 rounded-xl flex items-center justify-center transition-colors border shadow-2xs ${
-                            isDeliveredWithoutPhoto
-                              ? 'bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border-yellow-500'
-                              : item.deliveryPhoto
-                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
-                              : 'bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 border-gray-200'
-                          }`}
-                          title={item.deliveryPhoto ? 'Ver o reenviar foto de entrega' : 'Tomar foto de entrega'}
-                          aria-label={item.deliveryPhoto ? 'Ver foto de entrega' : 'Tomar foto de entrega'}
-                        >
-                          <Camera className="w-4 h-4" />
-                        </button>
+                        {isOwner ? (
+                          <button
+                            onClick={() => onOpenPhotoModal(item)}
+                            className={`p-2 rounded-xl flex items-center justify-center transition-colors border shadow-2xs ${
+                              isDeliveredWithoutPhoto
+                                ? 'bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border-yellow-500'
+                                : item.deliveryPhoto
+                                ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
+                                : 'bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 border-gray-200'
+                            }`}
+                            title={item.deliveryPhoto ? 'Ver o reenviar foto de entrega' : 'Tomar foto de entrega'}
+                            aria-label={item.deliveryPhoto ? 'Ver foto de entrega' : 'Tomar foto de entrega'}
+                          >
+                            <Camera className="w-4 h-4" />
+                          </button>
+                        ) : item.deliveryPhoto ? (
+                          <button
+                            onClick={() => onOpenPhotoModal(item)}
+                            className="bg-indigo-100 hover:bg-indigo-200 text-indigo-800 border border-indigo-200 p-2 rounded-xl flex items-center justify-center transition-colors shadow-2xs"
+                            title="Ver foto de entrega (solo lectura)"
+                            aria-label="Ver foto de entrega"
+                          >
+                            <Eye className="w-4 h-4" />
+                          </button>
+                        ) : null}
 
                         {/* WhatsApp Buttons (Icon Only, only if phone saved) */}
                         {(() => {
@@ -435,51 +479,67 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                           </a>
                         )}
 
-                        {/* Edit Button (Icon Only) */}
-                        <button
-                          onClick={() => onEditItem(item)}
-                          className={`p-2 rounded-xl flex items-center justify-center transition-colors border ${
-                            isIncomplete
-                              ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-500'
-                              : 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border-gray-200'
-                          }`}
-                          title={isIncomplete ? 'Completar ubicación' : 'Editar paquete y ubicación'}
-                          aria-label="Editar paquete"
-                        >
-                          <Edit3 className="w-4 h-4" />
-                        </button>
-
-                        {!isIncomplete && item.coverageStatus === 'in_coverage' && (
-                          <select
-                            value={item.status}
-                            onChange={e => onUpdateStatus(item.id, e.target.value as DeliveryItem['status'])}
-                            className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border outline-none transition-colors ${
-                              isDeliveredWithoutPhoto
-                                ? 'bg-yellow-200 text-yellow-950 border-yellow-400'
-                                : isDeliveredComplete
-                                ? 'bg-emerald-200 text-emerald-950 border-emerald-400'
-                                : item.status === 'in_transit'
-                                ? 'bg-blue-100 text-blue-800 border-blue-300'
-                                : isFailed
-                                ? 'bg-red-200 text-red-950 border-red-400'
-                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                        {/* Edit Button (Icon Only, only owner) */}
+                        {isOwner && (
+                          <button
+                            onClick={() => onEditItem(item)}
+                            className={`p-2 rounded-xl flex items-center justify-center transition-colors border ${
+                              isIncomplete
+                                ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-500'
+                                : 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border-gray-200'
                             }`}
+                            title={isIncomplete ? 'Completar ubicación' : 'Editar paquete y ubicación'}
+                            aria-label="Editar paquete"
                           >
-                            <option value="pending">Pendiente</option>
-                            <option value="in_transit">En camino</option>
-                            <option value="delivered">Entregada</option>
-                            <option value="failed">No entregada</option>
-                          </select>
+                            <Edit3 className="w-4 h-4" />
+                          </button>
                         )}
 
-                        <button
-                          onClick={() => onDeleteItem(item.id)}
-                          className="text-gray-400 hover:text-red-600 p-2 rounded-xl hover:bg-gray-100 transition-colors"
-                          title="Eliminar paquete"
-                          aria-label="Eliminar paquete"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        {!isIncomplete && item.coverageStatus === 'in_coverage' && (
+                          isOwner ? (
+                            <select
+                              value={item.status}
+                              onChange={e => onUpdateStatus(item.id, e.target.value as DeliveryItem['status'])}
+                              className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border outline-none transition-colors ${
+                                isDeliveredWithoutPhoto
+                                  ? 'bg-yellow-200 text-yellow-950 border-yellow-400'
+                                  : isDeliveredComplete
+                                  ? 'bg-emerald-200 text-emerald-950 border-emerald-400'
+                                  : item.status === 'in_transit'
+                                  ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                  : isFailed
+                                  ? 'bg-red-200 text-red-950 border-red-400'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}
+                            >
+                              <option value="pending">Pendiente</option>
+                              <option value="in_transit">En camino</option>
+                              <option value="delivered">Entregada</option>
+                              <option value="failed">No entregada</option>
+                            </select>
+                          ) : (item.status === 'pending' || item.status === 'in_transit') ? (
+                            <span
+                              className={`text-[10px] font-bold px-2.5 py-1 rounded-xl border ${
+                                item.status === 'in_transit'
+                                  ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                  : 'bg-amber-100 text-amber-800 border-amber-300'
+                              }`}
+                            >
+                              {item.status === 'in_transit' ? 'En camino' : 'Pendiente'}
+                            </span>
+                          ) : null
+                        )}
+
+                        {isOwner && (
+                          <button
+                            onClick={() => onDeleteItem(item.id)}
+                            className="text-gray-400 hover:text-red-600 p-2 rounded-xl hover:bg-gray-100 transition-colors"
+                            title="Eliminar paquete"
+                            aria-label="Eliminar paquete"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        )}
                       </div>
                     </div>
                   );
@@ -493,6 +553,13 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
       <WhatsAppMessageModal
         isOpen={isWhatsAppMsgOpen}
         onClose={() => setIsWhatsAppMsgOpen(false)}
+      />
+
+      <ShareRouteModal
+        isOpen={isShareRouteOpen}
+        onClose={() => setIsShareRouteOpen(false)}
+        items={items}
+        currentGps={currentGps}
       />
     </div>
   );

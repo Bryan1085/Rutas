@@ -24,8 +24,8 @@ service cloud.firestore {
     }
 
     function isValidDeliveryItem(data) {
-      return data.keys().hasAll(['id', 'originalNumber', 'address', 'lat', 'lng', 'status', 'coverageStatus', 'orderIndex']) &&
-             data.keys().hasOnly(['id', 'originalNumber', 'address', 'lat', 'lng', 'hasLocation', 'status', 'coverageStatus', 'province', 'orderIndex', 'phone', 'notes', 'distanceFromPrevKm', 'estimatedMinutes', 'assignedDriverId', 'assignedDriverName', 'deliveryPhoto', 'deliveryPhotoAt', 'updatedAt', 'createdAt']) &&
+      return data.keys().hasAll(['id', 'originalNumber', 'address', 'lat', 'lng', 'status', 'coverageStatus', 'orderIndex', 'assignedDriverId']) &&
+             data.keys().hasOnly(['id', 'originalNumber', 'address', 'lat', 'lng', 'hasLocation', 'status', 'coverageStatus', 'province', 'recipientName', 'orderIndex', 'phone', 'notes', 'distanceFromPrevKm', 'estimatedMinutes', 'assignedDriverId', 'assignedDriverName', 'deliveryPhoto', 'deliveryPhotoAt', 'updatedAt', 'createdAt']) &&
              data.id is string && data.id.size() <= 128 &&
              data.originalNumber is number &&
              data.address is string && data.address.size() <= 500 &&
@@ -35,8 +35,18 @@ service cloud.firestore {
              data.status is string && data.status in ['pending', 'in_transit', 'delivered', 'failed'] &&
              data.coverageStatus is string && data.coverageStatus in ['in_coverage', 'out_of_coverage', 'incomplete'] &&
              data.orderIndex is number &&
+             data.assignedDriverId is string && data.assignedDriverId.size() > 0 && data.assignedDriverId.size() <= 128 &&
+             (!('assignedDriverName' in data) || (data.assignedDriverName is string && data.assignedDriverName.size() <= 100)) &&
+             (!('province' in data) || (data.province is string && data.province.size() <= 100)) &&
+             (!('recipientName' in data) || (data.recipientName is string && data.recipientName.size() <= 120)) &&
+             (!('phone' in data) || (data.phone is string && data.phone.size() <= 50)) &&
+             (!('notes' in data) || (data.notes is string && data.notes.size() <= 1000)) &&
+             (!('distanceFromPrevKm' in data) || data.distanceFromPrevKm is number) &&
+             (!('estimatedMinutes' in data) || data.estimatedMinutes is number) &&
              (!('deliveryPhoto' in data) || (data.deliveryPhoto is string && data.deliveryPhoto.size() <= 600000)) &&
-             (!('deliveryPhotoAt' in data) || (data.deliveryPhotoAt is string && data.deliveryPhotoAt.size() <= 100));
+             (!('deliveryPhotoAt' in data) || (data.deliveryPhotoAt is string && data.deliveryPhotoAt.size() <= 100)) &&
+             (!('updatedAt' in data) || (data.updatedAt is string && data.updatedAt.size() <= 100)) &&
+             (!('createdAt' in data) || (data.createdAt is string && data.createdAt.size() <= 100));
     }
 
     function isValidDriverLocation(data) {
@@ -46,39 +56,69 @@ service cloud.firestore {
              data.driverName is string && data.driverName.size() <= 100 &&
              data.lat is number && data.lat >= -90 && data.lat <= 90 &&
              data.lng is number && data.lng >= -180 && data.lng <= 180 &&
+             (!('heading' in data) || data.heading is number) &&
+             (!('speed' in data) || data.speed is number) &&
              data.updatedAt is number;
     }
 
     function isValidRouteSession(data) {
-      return data.keys().hasAll(['id', 'name', 'date', 'status']) &&
-             data.keys().hasOnly(['id', 'name', 'date', 'status', 'totalDistanceKm', 'totalMinutes', 'createdAt', 'items']) &&
+      return data.keys().hasAll(['id', 'ownerId', 'name', 'date', 'status']) &&
+             data.keys().hasOnly(['id', 'ownerId', 'name', 'date', 'status', 'totalDistanceKm', 'totalMinutes', 'createdAt', 'items']) &&
              data.id is string && data.id.size() <= 128 &&
+             data.ownerId is string && data.ownerId.size() > 0 && data.ownerId.size() <= 128 &&
              data.name is string && data.name.size() <= 200 &&
              data.date is string && data.date.size() <= 100 &&
-             data.status is string && data.status.size() <= 50;
+             data.status is string && data.status.size() <= 50 &&
+             (!('totalDistanceKm' in data) || data.totalDistanceKm is number) &&
+             (!('totalMinutes' in data) || data.totalMinutes is number) &&
+             (!('createdAt' in data) || data.createdAt is number);
     }
 
-    // Deliveries Collection
+    // Deliveries Collection: Drivers can view all routes, but can ONLY create/update/delete packages belonging to their own profile (assignedDriverId == request.auth.uid)
     match /deliveries/{deliveryId} {
       allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(deliveryId) && isValidDeliveryItem(incoming());
-      allow update: if isSignedIn() && isValidId(deliveryId) && isValidDeliveryItem(incoming());
-      allow delete: if isSignedIn() && isValidId(deliveryId);
+      allow create: if isSignedIn() &&
+                    isValidId(deliveryId) &&
+                    isValidDeliveryItem(incoming()) &&
+                    incoming().assignedDriverId == request.auth.uid;
+      allow update: if isSignedIn() &&
+                    isValidId(deliveryId) &&
+                    isValidDeliveryItem(incoming()) &&
+                    existing().assignedDriverId == request.auth.uid &&
+                    incoming().assignedDriverId == existing().assignedDriverId;
+      allow delete: if isSignedIn() &&
+                    isValidId(deliveryId) &&
+                    existing().assignedDriverId == request.auth.uid;
     }
 
-    // Drivers Live Locations Collection
+    // Drivers Live Locations Collection: Drivers can read all live positions, but can ONLY write/delete their own driver doc
     match /drivers/{driverId} {
       allow read: if isSignedIn();
-      allow create, update: if isSignedIn() && isValidId(driverId) && isValidDriverLocation(incoming());
-      allow delete: if isSignedIn() && isValidId(driverId);
+      allow create, update: if isSignedIn() &&
+                            isValidId(driverId) &&
+                            driverId == request.auth.uid &&
+                            isValidDriverLocation(incoming()) &&
+                            incoming().id == request.auth.uid;
+      allow delete: if isSignedIn() &&
+                    isValidId(driverId) &&
+                    driverId == request.auth.uid;
     }
 
-    // Saved Routes Collection
+    // Saved Routes Collection: Strictly owned by the creating driver
     match /routes/{routeId} {
-      allow read: if isSignedIn();
-      allow create: if isSignedIn() && isValidId(routeId) && isValidRouteSession(incoming());
-      allow update: if isSignedIn() && isValidId(routeId) && isValidRouteSession(incoming());
-      allow delete: if isSignedIn() && isValidId(routeId);
+      allow read: if isSignedIn() && existing().ownerId == request.auth.uid;
+      allow create: if isSignedIn() &&
+                    isValidId(routeId) &&
+                    isValidRouteSession(incoming()) &&
+                    incoming().ownerId == request.auth.uid;
+      allow update: if isSignedIn() &&
+                    isValidId(routeId) &&
+                    isValidRouteSession(incoming()) &&
+                    existing().ownerId == request.auth.uid &&
+                    incoming().ownerId == existing().ownerId;
+      allow delete: if isSignedIn() &&
+                    isValidId(routeId) &&
+                    existing().ownerId == request.auth.uid;
     }
   }
 }
