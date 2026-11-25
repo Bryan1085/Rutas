@@ -22,6 +22,52 @@ function deg2rad(deg: number): number {
   return deg * (Math.PI / 180);
 }
 
+export function buildWhatsAppUrl(phone?: string, presetText?: string): string | null {
+  if (!phone) return null;
+  let digits = phone.replace(/\D/g, '');
+  if (!digits) return null;
+  if (digits.startsWith('00')) {
+    digits = digits.slice(2);
+  }
+  // Standard 8-digit Costa Rica number without country code -> prepend 506
+  if (digits.length === 8) {
+    digits = `506${digits}`;
+  }
+  const baseUrl = `https://wa.me/${digits}`;
+  return presetText ? `${baseUrl}?text=${encodeURIComponent(presetText)}` : baseUrl;
+}
+
+export const WHATSAPP_TEMPLATE_STORAGE_KEY = 'ruteo_whatsapp_template';
+export const DEFAULT_LOCATION_REQUEST_TEMPLATE =
+  'Hola, te saludamos por tu paquete #{paquete}. ¿Nos podrías compartir tu ubicación actual o enlace de Google Maps para realizar la entrega, por favor?';
+
+export function getLocationRequestTemplate(): string {
+  try {
+    const saved = localStorage.getItem(WHATSAPP_TEMPLATE_STORAGE_KEY);
+    return saved && saved.trim() ? saved : DEFAULT_LOCATION_REQUEST_TEMPLATE;
+  } catch {
+    return DEFAULT_LOCATION_REQUEST_TEMPLATE;
+  }
+}
+
+export function saveLocationRequestTemplate(template: string): void {
+  try {
+    const trimmed = template.trim();
+    if (!trimmed) {
+      localStorage.removeItem(WHATSAPP_TEMPLATE_STORAGE_KEY);
+    } else {
+      localStorage.setItem(WHATSAPP_TEMPLATE_STORAGE_KEY, trimmed);
+    }
+  } catch {
+    // ignore storage errors
+  }
+}
+
+export function buildLocationRequestMessage(packageNumber: number): string {
+  const template = getLocationRequestTemplate();
+  return template.replace(/\{paquete\}/gi, String(packageNumber));
+}
+
 // San José, Costa Rica center default
 const DEFAULT_LAT = 9.9281;
 const DEFAULT_LNG = -84.0907;

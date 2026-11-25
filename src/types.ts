@@ -1,5 +1,5 @@
 export type DeliveryStatus = 'pending' | 'in_transit' | 'delivered' | 'failed';
-export type CoverageStatus = 'in_coverage' | 'out_of_coverage' | 'pending_validation';
+export type CoverageStatus = 'in_coverage' | 'out_of_coverage' | 'incomplete' | 'pending_validation';
 
 export interface DeliveryItem {
   id: string;
@@ -7,6 +7,7 @@ export interface DeliveryItem {
   address: string;
   lat: number;
   lng: number;
+  hasLocation?: boolean;
   status: DeliveryStatus;
   coverageStatus: CoverageStatus;
   province?: string;
@@ -16,6 +17,10 @@ export interface DeliveryItem {
   orderIndex: number; // Visit sequence index (0, 1, 2...)
   distanceFromPrevKm?: number;
   estimatedMinutes?: number;
+  assignedDriverId?: string;
+  assignedDriverName?: string;
+  deliveryPhoto?: string;
+  deliveryPhotoAt?: string;
 }
 
 export interface RouteSession {

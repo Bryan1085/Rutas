@@ -4,13 +4,17 @@ import { QuotaBanner } from './components/QuotaBanner';
 import { Header } from './components/Header';
 import { MainDashboard } from './components/MainDashboard';
 import { MapView } from './components/MapView';
+import { FreeMapView } from './components/FreeMapView';
 import { LocationInputModal } from './components/LocationInputModal';
 import { RouteOptimizationModal } from './components/RouteOptimizationModal';
 import { ActiveNavigationModal } from './components/ActiveNavigationModal';
 import { SavedRoutesModal } from './components/SavedRoutesModal';
 import { SettingsModal } from './components/SettingsModal';
 import { EditPackageModal } from './components/EditPackageModal';
+import { DeliveryPhotoModal } from './components/DeliveryPhotoModal';
+import { OfflineIndicator } from './components/OfflineIndicator';
 import { Plus } from 'lucide-react';
+import { useFirebaseSync } from './hooks/useFirebaseSync';
 
 export default function App() {
   const [items, setItems] = useState<DeliveryItem[]>(() => {
@@ -90,6 +94,38 @@ export default function App() {
   const [gpsActive, setGpsActive] = useState<boolean>(false);
   const [showMap, setShowMap] = useState<boolean>(true);
   const [selectedPackageId, setSelectedPackageId] = useState<string | null>(null);
+  const [selectedDriverId, setSelectedDriverId] = useState<string | null>(null);
+  const [mapProvider, setMapProvider] = useState<'google' | 'free'>(() => {
+    const saved = localStorage.getItem('ruteo_map_provider');
+    if (saved === 'free' || saved === 'google') return saved;
+    return 'google';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('ruteo_map_provider', mapProvider);
+  }, [mapProvider]);
+
+  useEffect(() => {
+    const handleQuotaFallback = () => {
+      setMapProvider('free');
+    };
+    window.addEventListener('gmp-quota-exceeded', handleQuotaFallback);
+    return () => {
+      window.removeEventListener('gmp-quota-exceeded', handleQuotaFallback);
+    };
+  }, []);
+
+  // Firebase Realtime Sync Hook
+  const { user, signIn, signOut, remoteDrivers, syncItemToFirestore, deleteItemFromFirestore } = useFirebaseSync(
+    items,
+    setItems,
+    currentGps
+  );
+
+  // Filtered items based on selected driver route
+  const displayedItems = selectedDriverId
+    ? items.filter(i => i.assignedDriverId === selectedDriverId || !i.assignedDriverId)
+    : items;
 
   // Modals state
   const [isInputOpen, setIsInputOpen] = useState<boolean>(false);
@@ -98,6 +134,8 @@ export default function App() {
   const [isSavedRoutesOpen, setIsSavedRoutesOpen] = useState<boolean>(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState<boolean>(false);
   const [editingItem, setEditingItem] = useState<DeliveryItem | null>(null);
+  const [photoModalItemId, setPhotoModalItemId] = useState<string | null>(null);
+  const photoModalItem = items.find(i => i.id === photoModalItemId) || null;
 
   // Sync to localStorage
   useEffect(() => {
@@ -168,31 +206,71 @@ export default function App() {
   };
 
   const handleAddItems = (newItems: DeliveryItem[]) => {
-    setItems(prev => [...prev, ...newItems]);
+    const assignedNewItems = newItems.map(item => ({
+      ...item,
+      assignedDriverId: selectedDriverId || user?.uid || undefined,
+      assignedDriverName: selectedDriverId 
+        ? remoteDrivers.find(d => d.id === selectedDriverId)?.driverName 
+        : (user?.displayName || user?.email?.split('@')[0] || undefined)
+    }));
+
+    setItems(prev => {
+      const combined = [...prev, ...assignedNewItems];
+      assignedNewItems.forEach(item => syncItemToFirestore(item));
+      return combined;
+    });
   };
 
   const handleUpdateStatus = (id: string, status: DeliveryItem['status']) => {
-    setItems(prev =>
-      prev.map(item => (item.id === id ? { ...item, status } : item))
-    );
+    setItems(prev => {
+      const updated = prev.map(item => {
+        if (item.id === id) {
+          const newItem = { ...item, status };
+          syncItemToFirestore(newItem);
+          return newItem;
+        }
+        return item;
+      });
+      return updated;
+    });
   };
 
   const handleSaveEditItem = (updated: DeliveryItem) => {
     setItems(prev => prev.map(item => (item.id === updated.id ? updated : item)));
+    syncItemToFirestore(updated);
+  };
+
+  const handleSaveDeliveryPhoto = (id: string, photoDataUrl: string | undefined, markDelivered?: boolean) => {
+    setItems(prev =>
+      prev.map(item => {
+        if (item.id !== id) return item;
+        const updated: DeliveryItem = {
+          ...item,
+          deliveryPhoto: photoDataUrl,
+          deliveryPhotoAt: photoDataUrl ? new Date().toISOString() : undefined,
+          status: markDelivered ? 'delivered' : item.status
+        };
+        syncItemToFirestore(updated);
+        return updated;
+      })
+    );
   };
 
   const handleDeleteItem = (id: string) => {
     setItems(prev => prev.filter(item => item.id !== id));
+    deleteItemFromFirestore(id);
   };
 
   const handleClearAllItems = () => {
     if (confirm('¿Estás seguro de eliminar todas las ubicaciones actuales?')) {
+      items.forEach(i => deleteItemFromFirestore(i.id));
       setItems([]);
     }
   };
 
   const handleApplyOptimizedItems = (optimized: DeliveryItem[]) => {
     setItems(optimized);
+    optimized.forEach(item => syncItemToFirestore(item));
   };
 
   const handleSaveCurrentRoute = () => {
@@ -213,6 +291,7 @@ export default function App() {
 
   const handleLoadRoute = (route: RouteSession) => {
     setItems(route.items);
+    route.items.forEach(item => syncItemToFirestore(item));
   };
 
   const handleDeleteRoute = (id: string) => {
@@ -229,47 +308,95 @@ export default function App() {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans text-gray-900 selection:bg-emerald-500 selection:text-white relative">
       {/* GMP Quota Banner */}
-      <QuotaBanner />
+      <QuotaBanner
+        mapProvider={mapProvider}
+        onSwitchToFreeMap={() => setMapProvider('free')}
+      />
 
       {/* Header */}
       <Header
-        items={items}
         onOpenSettings={() => setIsSettingsOpen(true)}
         onOpenSavedRoutes={() => setIsSavedRoutesOpen(true)}
         gpsActive={gpsActive}
         onToggleGps={handleToggleGps}
+        user={user}
+        onSignIn={signIn}
+        onSignOut={signOut}
+        remoteDrivers={remoteDrivers}
+        selectedDriverId={selectedDriverId}
+        onSelectDriver={setSelectedDriverId}
       />
 
       {/* Main Container */}
       <main className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 pt-6 flex-1 w-full space-y-6">
         {/* Interactive Map Section */}
         {showMap && (
-          <div className="w-full h-[400px] md:h-[500px] shadow-2xl rounded-3xl overflow-hidden transition-all border border-gray-200">
-            <MapView
-              items={items}
-              currentGps={currentGps}
-              selectedPackageId={selectedPackageId}
-              onUpdateStatus={handleUpdateStatus}
-              onStartNavigation={item => {
-                const url = `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`;
-                window.open(url, '_blank');
-              }}
-              apiKey={apiKey}
-            />
+          <div className="w-full h-[400px] md:h-[500px] shadow-2xl rounded-3xl overflow-hidden transition-all border border-gray-200 relative">
+            {/* Map Provider Switcher (Google Maps vs 100% Free OpenStreetMap) */}
+            <div className="absolute top-3 right-14 z-[460] bg-white/95 backdrop-blur-xs border border-gray-200 rounded-xl p-1 shadow-md flex items-center gap-1 text-[11px] font-bold">
+              <button
+                onClick={() => setMapProvider('free')}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  mapProvider === 'free'
+                    ? 'bg-emerald-600 text-white shadow-2xs'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+                title="Mapa 100% gratuito sin límites ni facturación (OpenStreetMap)"
+              >
+                Mapa Gratis
+              </button>
+              <button
+                onClick={() => setMapProvider('google')}
+                className={`px-2.5 py-1 rounded-lg transition-colors ${
+                  mapProvider === 'google'
+                    ? 'bg-gray-900 text-white shadow-2xs'
+                    : 'text-gray-600 hover:bg-gray-100'
+                }`}
+                title="Usar Google Maps (cuota gratuita diaria)"
+              >
+                Google Maps
+              </button>
+            </div>
+
+            {mapProvider === 'free' ? (
+              <FreeMapView
+                items={displayedItems}
+                currentGps={currentGps}
+                selectedPackageId={selectedPackageId}
+                onUpdateStatus={handleUpdateStatus}
+                onOpenPhotoModal={item => setPhotoModalItemId(item.id)}
+                remoteDrivers={selectedDriverId ? remoteDrivers.filter(d => d.id === selectedDriverId) : remoteDrivers}
+              />
+            ) : (
+              <MapView
+                items={displayedItems}
+                currentGps={currentGps}
+                selectedPackageId={selectedPackageId}
+                onUpdateStatus={handleUpdateStatus}
+                onStartNavigation={item => {
+                  const url = `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`;
+                  window.open(url, '_blank');
+                }}
+                onOpenPhotoModal={item => setPhotoModalItemId(item.id)}
+                apiKey={apiKey}
+                remoteDrivers={selectedDriverId ? remoteDrivers.filter(d => d.id === selectedDriverId) : remoteDrivers}
+              />
+            )}
           </div>
         )}
 
         {/* Dashboard Content */}
         <MainDashboard
-          items={items}
+          items={displayedItems}
           onOpenInputModal={() => setIsInputOpen(true)}
           onOpenOptimizerModal={() => setIsOptimizerOpen(true)}
           onOpenNavigationModal={() => setIsNavOpen(true)}
           onOpenSavedRoutesModal={() => setIsSavedRoutesOpen(true)}
           onUpdateStatus={handleUpdateStatus}
           onEditItem={item => setEditingItem(item)}
+          onOpenPhotoModal={item => setPhotoModalItemId(item.id)}
           onSelectPackage={id => {
-            setSelectedPackageId(null); // reset trigger
+            setSelectedPackageId(null);
             setTimeout(() => setSelectedPackageId(id), 10);
           }}
           onDeleteItem={handleDeleteItem}
@@ -300,7 +427,7 @@ export default function App() {
       <RouteOptimizationModal
         isOpen={isOptimizerOpen}
         onClose={() => setIsOptimizerOpen(false)}
-        items={items}
+        items={displayedItems}
         currentGps={currentGps}
         onApplyOptimizedItems={handleApplyOptimizedItems}
       />
@@ -308,8 +435,9 @@ export default function App() {
       <ActiveNavigationModal
         isOpen={isNavOpen}
         onClose={() => setIsNavOpen(false)}
-        items={items}
+        items={displayedItems}
         onUpdateStatus={handleUpdateStatus}
+        onOpenPhotoModal={item => setPhotoModalItemId(item.id)}
         onFinishRoute={handleSaveCurrentRoute}
       />
 
@@ -337,6 +465,15 @@ export default function App() {
         item={editingItem}
         onSaveEdit={handleSaveEditItem}
       />
+
+      <DeliveryPhotoModal
+        isOpen={!!photoModalItem}
+        onClose={() => setPhotoModalItemId(null)}
+        item={photoModalItem}
+        onSavePhoto={handleSaveDeliveryPhoto}
+      />
+
+      <OfflineIndicator />
     </div>
   );
 }

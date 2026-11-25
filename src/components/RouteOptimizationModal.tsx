@@ -1,5 +1,5 @@
-import React, { useState } from 'react';
-import { X, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Check, Route as RouteIcon, MapPin } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Sparkles, ArrowUpDown, ArrowUp, ArrowDown, Check, Route as RouteIcon } from 'lucide-react';
 import { DeliveryItem, GpsPosition } from '../types';
 import { optimizeRoute } from '../utils/optimizer';
 
@@ -21,6 +21,13 @@ export const RouteOptimizationModal: React.FC<RouteOptimizationModalProps> = ({
   const [mode, setMode] = useState<'auto' | 'manual'>('auto');
   const [workingItems, setWorkingItems] = useState<DeliveryItem[]>([...items]);
   const [optimizationStats, setOptimizationStats] = useState<{ totalDist: number; totalMins: number } | null>(null);
+
+  useEffect(() => {
+    if (isOpen) {
+      setWorkingItems([...items]);
+      setOptimizationStats(null);
+    }
+  }, [isOpen, items]);
 
   if (!isOpen) return null;
 

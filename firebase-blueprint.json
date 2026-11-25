@@ -1,0 +1,75 @@
+{
+  "entities": {
+    "DeliveryItem": {
+      "title": "Delivery Item",
+      "description": "A package delivery destination",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "originalNumber": { "type": "number" },
+        "address": { "type": "string", "maxLength": 500 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "hasLocation": { "type": "boolean" },
+        "status": { "type": "string", "enum": ["pending", "in_transit", "delivered", "failed"] },
+        "coverageStatus": { "type": "string", "enum": ["in_coverage", "out_of_coverage", "incomplete"] },
+        "province": { "type": "string", "maxLength": 100 },
+        "orderIndex": { "type": "number" },
+        "phone": { "type": "string", "maxLength": 50 },
+        "distanceFromPrevKm": { "type": "number" },
+        "estimatedMinutes": { "type": "number" },
+        "assignedDriverId": { "type": "string", "maxLength": 128 },
+        "assignedDriverName": { "type": "string", "maxLength": 100 },
+        "deliveryPhoto": { "type": "string", "maxLength": 600000 },
+        "deliveryPhotoAt": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "originalNumber", "address", "lat", "lng", "status", "coverageStatus", "orderIndex"]
+    },
+    "DriverLocation": {
+      "title": "Driver Location",
+      "description": "Real-time GPS position of a connected driver",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "driverName": { "type": "string", "maxLength": 100 },
+        "lat": { "type": "number" },
+        "lng": { "type": "number" },
+        "heading": { "type": "number" },
+        "speed": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      },
+      "required": ["id", "driverName", "lat", "lng", "updatedAt"]
+    },
+    "RouteSession": {
+      "title": "Route Session",
+      "description": "A saved route session",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "maxLength": 128, "pattern": "^[a-zA-Z0-9_\\-]+$" },
+        "name": { "type": "string", "maxLength": 200 },
+        "date": { "type": "string", "maxLength": 100 },
+        "status": { "type": "string", "maxLength": 50 },
+        "totalDistanceKm": { "type": "number" },
+        "totalMinutes": { "type": "number" },
+        "createdAt": { "type": "number" }
+      },
+      "required": ["id", "name", "date", "status"]
+    }
+  },
+  "firestore": {
+    "/deliveries/{deliveryId}": {
+      "schema": { "$ref": "#/entities/DeliveryItem" },
+      "description": "Shared delivery packages across drivers"
+    },
+    "/drivers/{driverId}": {
+      "schema": { "$ref": "#/entities/DriverLocation" },
+      "description": "Live GPS positions of active drivers"
+    },
+    "/routes/{routeId}": {
+      "schema": { "$ref": "#/entities/RouteSession" },
+      "description": "Saved route sessions"
+    }
+  }
+}

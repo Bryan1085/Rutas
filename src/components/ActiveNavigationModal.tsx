@@ -1,12 +1,14 @@
 import React from 'react';
-import { X, Navigation, CheckCircle2, AlertCircle, ExternalLink, PauseCircle, MapPin } from 'lucide-react';
+import { X, Navigation, CheckCircle2, AlertCircle, ExternalLink, PauseCircle, MapPin, MessageCircle, Camera } from 'lucide-react';
 import { DeliveryItem } from '../types';
+import { buildWhatsAppUrl } from '../utils/whatsappParser';
 
 interface ActiveNavigationModalProps {
   isOpen: boolean;
   onClose: () => void;
   items: DeliveryItem[];
   onUpdateStatus: (id: string, status: DeliveryItem['status']) => void;
+  onOpenPhotoModal: (item: DeliveryItem) => void;
   onFinishRoute: () => void;
 }
 
@@ -15,27 +17,18 @@ export const ActiveNavigationModal: React.FC<ActiveNavigationModalProps> = ({
   onClose,
   items,
   onUpdateStatus,
+  onOpenPhotoModal,
   onFinishRoute
 }) => {
   if (!isOpen) return null;
 
-  // Filter only in-coverage items for active navigation route
-  const activeRouteItems = items.filter(i => i.coverageStatus === 'in_coverage');
+  // Filter only in-coverage items with valid location for active navigation route
+  const activeRouteItems = items.filter(i => i.coverageStatus === 'in_coverage' && i.hasLocation !== false);
   const sortedItems = [...activeRouteItems].sort((a, b) => a.orderIndex - b.orderIndex);
   const currentTarget = sortedItems.find(i => i.status === 'pending' || i.status === 'in_transit');
   const deliveredCount = activeRouteItems.filter(i => i.status === 'delivered').length;
   const totalCount = activeRouteItems.length;
   const progressPercent = totalCount > 0 ? Math.round((deliveredCount / totalCount) * 100) : 100;
-
-  const handleOpenGoogleMaps = (item: DeliveryItem) => {
-    const url = `https://www.google.com/maps/dir/?api=1&destination=${item.lat},${item.lng}`;
-    window.open(url, '_blank');
-  };
-
-  const handleOpenWaze = (item: DeliveryItem) => {
-    const url = `https://www.waze.com/ul?ll=${item.lat},${item.lng}&navigate=yes`;
-    window.open(url, '_blank');
-  };
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
@@ -109,28 +102,57 @@ export const ActiveNavigationModal: React.FC<ActiveNavigationModalProps> = ({
                   )}
                 </div>
 
-                {/* Navigation App Buttons */}
-                <div className="grid grid-cols-2 gap-2 pt-2">
-                  <button
-                    onClick={() => handleOpenGoogleMaps(currentTarget)}
-                    className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all shadow-blue-600/20"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Google Maps</span>
-                  </button>
-                  <button
-                    onClick={() => handleOpenWaze(currentTarget)}
-                    className="bg-sky-500 hover:bg-sky-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all shadow-sky-500/20"
-                  >
-                    <ExternalLink className="w-4 h-4" />
-                    <span>Waze</span>
-                  </button>
+                {/* Navigation & Contact App Buttons */}
+                <div className="space-y-2 pt-2">
+                  <div className="grid grid-cols-2 gap-2">
+                    <a
+                      href={`https://www.google.com/maps/dir/?api=1&destination=${currentTarget.lat},${currentTarget.lng}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-blue-600 hover:bg-blue-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all shadow-blue-600/20"
+                    >
+                      <ExternalLink className="w-4 h-4" />
+                      <span>Google Maps</span>
+                    </a>
+                    <a
+                      href={`https://waze.com/ul?ll=${currentTarget.lat},${currentTarget.lng}&navigate=yes`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="bg-sky-500 hover:bg-sky-600 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all shadow-sky-500/20"
+                    >
+                      <Navigation className="w-4 h-4 transform rotate-45" />
+                      <span>Waze</span>
+                    </a>
+                  </div>
+                  {(() => {
+                    const waUrl = buildWhatsAppUrl(currentTarget.phone);
+                    if (!waUrl) return null;
+                    return (
+                      <a
+                        href={waUrl}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full bg-green-600 hover:bg-green-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+                      >
+                        <MessageCircle className="w-4 h-4" />
+                        <span>Enviar WhatsApp ({currentTarget.phone})</span>
+                      </a>
+                    );
+                  })()}
                 </div>
               </div>
 
               {/* Action Buttons for Current Delivery */}
               <div className="space-y-2">
                 <p className="text-xs font-semibold text-gray-700 text-center">Registrar resultado de esta entrega:</p>
+                <button
+                  type="button"
+                  onClick={() => onOpenPhotoModal(currentTarget)}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white py-2.5 px-4 rounded-xl text-xs font-bold flex items-center justify-center gap-2 shadow-sm transition-all"
+                >
+                  <Camera className="w-4 h-4" />
+                  <span>{currentTarget.deliveryPhoto ? 'Ver / Reenviar Foto de Entrega' : 'Tomar Foto de Entrega'}</span>
+                </button>
                 <div className="grid grid-cols-2 gap-3">
                   <button
                     onClick={() => onUpdateStatus(currentTarget.id, 'delivered')}

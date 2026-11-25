@@ -15,21 +15,31 @@ export function optimizeRoute(
     return { optimizedItems: [], totalDistanceKm: 0, totalMinutes: 0 };
   }
 
-  // Separate in-coverage pending/in_transit items from out-of-coverage and finished items
+  // Separate in-coverage pending/in_transit items (with valid location) from out-of-coverage, incomplete, and finished items
   const inCoveragePending = items.filter(
-    item => (item.status === 'pending' || item.status === 'in_transit') && item.coverageStatus === 'in_coverage'
+    item =>
+      (item.status === 'pending' || item.status === 'in_transit') &&
+      item.coverageStatus === 'in_coverage' &&
+      item.hasLocation !== false
   );
 
   const otherItems = items.filter(
-    item => item.coverageStatus !== 'in_coverage' || item.status === 'delivered' || item.status === 'failed'
+    item =>
+      item.hasLocation === false ||
+      item.coverageStatus !== 'in_coverage' ||
+      item.status === 'delivered' ||
+      item.status === 'failed'
   );
 
   if (inCoveragePending.length <= 1) {
     let runningDist = 0;
-    let lastLat = currentGps ? currentGps.lat : (items[0]?.lat || 0);
-    let lastLng = currentGps ? currentGps.lng : (items[0]?.lng || 0);
+    let lastLat = currentGps ? currentGps.lat : (inCoveragePending[0]?.lat || 0);
+    let lastLng = currentGps ? currentGps.lng : (inCoveragePending[0]?.lng || 0);
 
     const updated = items.map((item, idx) => {
+      if (item.hasLocation === false || item.coverageStatus === 'incomplete') {
+        return { ...item, orderIndex: idx, distanceFromPrevKm: undefined, estimatedMinutes: undefined };
+      }
       const dist = calculateDistanceKm(lastLat, lastLng, item.lat, item.lng);
       runningDist += dist;
       lastLat = item.lat;
@@ -80,10 +90,18 @@ export function optimizeRoute(
   const combined = [...otherItems, ...sortedInCoverage];
 
   let runningDist = 0;
-  let lastLat = currentGps ? currentGps.lat : (combined[0]?.lat || 0);
-  let lastLng = currentGps ? currentGps.lng : (combined[0]?.lng || 0);
+  let lastLat = currentGps ? currentGps.lat : (sortedInCoverage[0]?.lat || 0);
+  let lastLng = currentGps ? currentGps.lng : (sortedInCoverage[0]?.lng || 0);
 
   const finalOptimized = combined.map((item, idx) => {
+    if (item.hasLocation === false || item.coverageStatus === 'incomplete') {
+      return {
+        ...item,
+        orderIndex: idx,
+        distanceFromPrevKm: undefined,
+        estimatedMinutes: undefined
+      };
+    }
     const dist = calculateDistanceKm(lastLat, lastLng, item.lat, item.lng);
     runningDist += dist;
     lastLat = item.lat;

@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
-import { Plus, MapPin, Sparkles, Navigation, CheckCircle2, AlertCircle, Clock, Trash2, Search, ShieldAlert, ShieldCheck, ChevronUp, ChevronDown, Edit3, Phone } from 'lucide-react';
+import { Plus, MapPin, Sparkles, Navigation, Trash2, Search, ShieldAlert, ChevronUp, ChevronDown, Edit3, Phone, MessageCircle, Camera, Send } from 'lucide-react';
 import { DeliveryItem } from '../types';
+import { buildWhatsAppUrl, buildLocationRequestMessage } from '../utils/whatsappParser';
+import { WhatsAppMessageModal } from './WhatsAppMessageModal';
 
 interface MainDashboardProps {
   items: DeliveryItem[];
@@ -10,6 +12,7 @@ interface MainDashboardProps {
   onOpenSavedRoutesModal: () => void;
   onUpdateStatus: (id: string, status: DeliveryItem['status']) => void;
   onEditItem: (item: DeliveryItem) => void;
+  onOpenPhotoModal: (item: DeliveryItem) => void;
   onSelectPackage: (id: string) => void;
   onDeleteItem: (id: string) => void;
   onClearAllItems: () => void;
@@ -25,6 +28,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   onOpenSavedRoutesModal,
   onUpdateStatus,
   onEditItem,
+  onOpenPhotoModal,
   onSelectPackage,
   onDeleteItem,
   onClearAllItems,
@@ -35,12 +39,10 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [coverageFilter, setCoverageFilter] = useState<string>('all');
   const [isBottomSheetOpen, setIsBottomSheetOpen] = useState<boolean>(true);
+  const [isWhatsAppMsgOpen, setIsWhatsAppMsgOpen] = useState<boolean>(false);
 
-  const inCoverageItems = items.filter(i => i.coverageStatus === 'in_coverage');
-  const pendingCount = inCoverageItems.filter(i => i.status === 'pending' || i.status === 'in_transit').length;
-  const deliveredCount = inCoverageItems.filter(i => i.status === 'delivered').length;
+  const inCoverageItems = items.filter(i => i.coverageStatus === 'in_coverage' && i.hasLocation !== false);
   const outOfCoverageCount = items.filter(i => i.coverageStatus === 'out_of_coverage').length;
-  const progressPercent = inCoverageItems.length > 0 ? Math.round((deliveredCount / inCoverageItems.length) * 100) : 0;
 
   const filteredItems = items.filter(item => {
     const matchesSearch = item.address.toLowerCase().includes(searchTerm.toLowerCase()) ||
@@ -54,135 +56,62 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
   }).sort((a, b) => a.orderIndex - b.orderIndex);
 
   return (
-    <div className="space-y-6 pb-16">
-      {/* Waze-Inspired Hero Banner */}
-      <div className="bg-gradient-to-r from-emerald-600 via-teal-600 to-cyan-700 rounded-3xl p-6 md:p-8 text-white shadow-2xl relative overflow-hidden border border-emerald-400/20">
-        <div className="absolute right-0 top-0 transform translate-x-12 -translate-y-12 w-72 h-72 bg-white/10 rounded-full blur-3xl pointer-events-none" />
-        
-        <div className="relative z-10 max-w-3xl space-y-4">
-          <div className="flex items-center gap-2 flex-wrap">
-            <span className="bg-white/25 backdrop-blur-md text-white text-xs font-bold px-3.5 py-1.5 rounded-full border border-white/20 flex items-center gap-1.5 shadow-xs">
-              <span className="w-2 h-2 rounded-full bg-emerald-300 animate-ping" />
-              RUTEO • Copiloto de Repartidores
-            </span>
-            <span className="bg-emerald-800/60 text-emerald-100 text-xs font-semibold px-3 py-1.5 rounded-full">
-              Costa Rica (San José, Heredia, Cartago)
-            </span>
-          </div>
+    <div className="space-y-4 pb-16">
+      {/* Compact Action Bar */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+        <button
+          onClick={onOpenOptimizerModal}
+          disabled={inCoverageItems.length === 0}
+          className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-emerald-600/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Sparkles className="w-4 h-4 shrink-0" />
+          <span>Optimizar Ruta</span>
+        </button>
 
-          <h2 className="text-2xl md:text-4xl font-black tracking-tight leading-tight">
-            Navega más rápido, entrega sin confusiones
-          </h2>
-          <p className="text-emerald-100 text-xs md:text-sm leading-relaxed max-w-2xl">
-            Optimiza tus recorridos reales por carretera, oculta entregas completadas automáticamente y mantén el control total de tus paquetes personalizados.
-          </p>
+        <button
+          onClick={() => {
+            if (outOfCoverageCount > 0) {
+              if (!confirm(`Atención: Hay ${outOfCoverageCount} paquete(s) fuera de zona de cobertura (San José, Heredia, Cartago). No participarán en la navegación. ¿Deseas iniciar de todos modos?`)) {
+                return;
+              }
+            }
+            onOpenNavigationModal();
+          }}
+          disabled={inCoverageItems.length === 0}
+          className="bg-teal-600 hover:bg-teal-500 text-white px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-md shadow-teal-600/20 transition-all active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Navigation className="w-4 h-4 transform rotate-45 shrink-0" />
+          <span>Iniciar Ruta</span>
+        </button>
 
-          {/* Main Action Buttons Grid (Waze Style) */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 pt-2">
-            <button
-              onClick={onOpenInputModal}
-              className="bg-white hover:bg-emerald-50 text-emerald-950 px-4 py-3.5 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-2 shadow-xl transition-all transform hover:-translate-y-1 group"
-            >
-              <div className="w-9 h-9 bg-emerald-100 group-hover:bg-emerald-600 group-hover:text-white text-emerald-700 rounded-xl flex items-center justify-center transition-colors">
-                <Plus className="w-5 h-5" />
-              </div>
-              <span>Agregar Paquete</span>
-            </button>
+        <button
+          onClick={onToggleShowMap}
+          className="bg-white hover:bg-gray-100 text-gray-800 border border-gray-200 px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-95"
+        >
+          <MapPin className="w-4 h-4 text-emerald-600 shrink-0" />
+          <span>{showMap ? 'Ocultar Mapa' : 'Ver Mapa'}</span>
+        </button>
 
-            <button
-              onClick={onOpenOptimizerModal}
-              disabled={inCoverageItems.length === 0}
-              className="bg-emerald-700 hover:bg-emerald-600 text-white px-4 py-3.5 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-2 shadow-xl transition-all transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none group"
-            >
-              <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
-                <Sparkles className="w-5 h-5" />
-              </div>
-              <span>Optimizar Ruta</span>
-            </button>
-
-            <button
-              onClick={() => {
-                if (outOfCoverageCount > 0) {
-                  if (!confirm(`Atención: Hay ${outOfCoverageCount} paquete(s) fuera de zona de cobertura (San José, Heredia, Cartago). No participarán en la navegación. ¿Deseas iniciar de todos modos?`)) {
-                    return;
-                  }
-                }
-                onOpenNavigationModal();
-              }}
-              disabled={inCoverageItems.length === 0}
-              className="bg-teal-700 hover:bg-teal-600 text-white px-4 py-3.5 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-2 shadow-xl transition-all transform hover:-translate-y-1 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-            >
-              <div className="w-9 h-9 bg-white/20 rounded-xl flex items-center justify-center">
-                <Navigation className="w-5 h-5 transform rotate-45" />
-              </div>
-              <span>Iniciar Ruta</span>
-            </button>
-
-            <button
-              onClick={onToggleShowMap}
-              className="bg-emerald-950/60 hover:bg-emerald-950 text-emerald-100 border border-emerald-400/30 px-4 py-3.5 rounded-2xl text-xs font-bold flex flex-col items-center justify-center gap-2 transition-all"
-            >
-              <div className="w-9 h-9 bg-emerald-900 text-emerald-200 rounded-xl flex items-center justify-center">
-                <MapPin className="w-5 h-5" />
-              </div>
-              <span>{showMap ? 'Ocultar Mapa' : 'Ver Mapa'}</span>
-            </button>
-          </div>
-        </div>
+        <button
+          onClick={() => setIsWhatsAppMsgOpen(true)}
+          className="bg-green-50 hover:bg-green-100 text-green-900 border border-green-300 px-3 py-3 rounded-2xl text-xs font-bold flex items-center justify-center gap-2 shadow-xs transition-all active:scale-95"
+        >
+          <MessageCircle className="w-4 h-4 text-green-700 shrink-0" />
+          <span>Editar mensaje WhatsApp</span>
+        </button>
       </div>
 
       {/* Out of coverage alert if any */}
       {outOfCoverageCount > 0 && (
-        <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
-          <ShieldAlert className="w-5 h-5 text-amber-700 shrink-0 mt-0.5" />
-          <div className="space-y-1">
-            <h4 className="text-xs font-bold text-amber-950">
-              Aviso de Cobertura: {outOfCoverageCount} paquete(s) fuera de San José, Heredia y Cartago
-            </h4>
-            <p className="text-xs text-amber-900">
-              Estos paquetes se muestran con alerta roja en la lista. Se conservan para tu control, pero están excluidos de la optimización y ruta de navegación automática.
-            </p>
-          </div>
+        <div className="bg-amber-50 border border-amber-300 rounded-2xl px-4 py-2.5 flex items-center gap-2.5 shadow-xs">
+          <ShieldAlert className="w-4 h-4 text-amber-700 shrink-0" />
+          <p className="text-xs font-semibold text-amber-950">
+            {outOfCoverageCount} paquete(s) fuera de cobertura (San José, Heredia, Cartago) excluidos de la ruta.
+          </p>
         </div>
       )}
 
-      {/* Progress & Summary Cards */}
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-        <div className="bg-white p-4.5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Pendientes de Ruta</p>
-            <p className="text-2xl font-black text-emerald-700">{pendingCount}</p>
-            <p className="text-[10px] text-gray-400">En zonas autorizadas</p>
-          </div>
-          <div className="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-2xl flex items-center justify-center shadow-inner">
-            <Clock className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Entregados (Ocultos en Mapa)</p>
-            <p className="text-2xl font-black text-teal-700">{deliveredCount}</p>
-            <p className="text-[10px] text-gray-400">Progreso: {progressPercent}%</p>
-          </div>
-          <div className="w-12 h-12 bg-teal-50 text-teal-600 rounded-2xl flex items-center justify-center shadow-inner">
-            <CheckCircle2 className="w-6 h-6" />
-          </div>
-        </div>
-
-        <div className="bg-white p-4.5 rounded-2xl border border-gray-200 shadow-sm flex items-center justify-between">
-          <div>
-            <p className="text-xs text-gray-500 font-bold uppercase tracking-wider">Fuera de Cobertura</p>
-            <p className="text-2xl font-black text-red-600">{outOfCoverageCount}</p>
-            <p className="text-[10px] text-gray-400">Fuera de GAM</p>
-          </div>
-          <div className="w-12 h-12 bg-red-50 text-red-600 rounded-2xl flex items-center justify-center shadow-inner">
-            <ShieldAlert className="w-6 h-6" />
-          </div>
-        </div>
-      </div>
-
-      {/* Collapsible Bottom Panel for Deliveries */}
+      {/* Package List Panel */}
       <div className="bg-white rounded-3xl border border-gray-200 shadow-lg overflow-hidden">
         <div
           onClick={() => setIsBottomSheetOpen(!isBottomSheetOpen)}
@@ -192,10 +121,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
             <div className="w-8 h-8 bg-emerald-100 text-emerald-700 rounded-xl flex items-center justify-center font-bold text-xs">
               {filteredItems.length}
             </div>
-            <div>
-              <h3 className="text-sm font-black text-gray-900">Panel de Destinos y Paquetes</h3>
-              <p className="text-[11px] text-gray-500">Haz clic en un paquete para marcarlo y centrarlo en el mapa</p>
-            </div>
+            <h3 className="text-sm font-black text-gray-900">Lista de Paquetes</h3>
           </div>
 
           <button className="text-gray-500 hover:text-gray-900 p-1.5 rounded-xl flex items-center gap-1 text-xs font-bold">
@@ -227,6 +153,7 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
                 >
                   <option value="all">Todas las zonas</option>
                   <option value="in_coverage">En cobertura</option>
+                  <option value="incomplete">Datos incompletos</option>
                   <option value="out_of_coverage">Fuera de cobertura</option>
                 </select>
 
@@ -264,120 +191,309 @@ export const MainDashboard: React.FC<MainDashboardProps> = ({
               </div>
             ) : (
               <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
-                {filteredItems.map(item => (
-                  <div
-                    key={item.id}
-                    onClick={() => onSelectPackage(item.id)}
-                    className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 cursor-pointer hover:shadow-md ${
-                      item.coverageStatus === 'out_of_coverage'
-                        ? 'bg-red-50/60 border-red-200 hover:border-red-400'
-                        : item.status === 'delivered'
-                        ? 'bg-gray-50 border-gray-200 opacity-80 hover:border-gray-300'
-                        : 'bg-white border-gray-200 hover:border-emerald-400 shadow-2xs'
-                    }`}
-                  >
-                    <div className="flex items-center gap-3.5">
-                      <div className="flex items-center gap-1.5">
-                        <span className="w-7 h-7 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs flex items-center justify-center" title="Orden de visita">
-                          #{item.orderIndex + 1}
-                        </span>
-
-                        <span
-                          className={`w-10 h-10 rounded-2xl font-black text-xs flex items-center justify-center shadow-md text-white ${
-                            item.coverageStatus === 'out_of_coverage' ? 'bg-red-600' : 'bg-emerald-600'
-                          }`}
-                          title={`Paquete #${item.originalNumber}`}
-                        >
-                          #{item.originalNumber}
-                        </span>
-                      </div>
-
-                      <div className="space-y-0.5">
-                        <div className="flex items-center gap-2">
-                          <p className={`font-bold text-xs sm:text-sm ${item.status === 'delivered' ? 'line-through text-gray-500' : 'text-gray-900'}`}>
-                            {item.address}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] sm:text-xs text-gray-500">
-                          <span className={`font-bold ${item.coverageStatus === 'out_of_coverage' ? 'text-red-600' : 'text-emerald-700'}`}>
-                            {item.province || 'Costa Rica'}
+                {filteredItems.map(item => {
+                  const isIncomplete = item.hasLocation === false || item.coverageStatus === 'incomplete';
+                  const isFailed = item.status === 'failed';
+                  const isDeliveredWithoutPhoto = item.status === 'delivered' && !item.deliveryPhoto;
+                  const isDeliveredComplete = item.status === 'delivered' && Boolean(item.deliveryPhoto);
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => (isIncomplete ? onEditItem(item) : onSelectPackage(item.id))}
+                      className={`p-4 rounded-2xl border transition-all flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 cursor-pointer hover:shadow-md ${
+                        isIncomplete
+                          ? 'bg-orange-50/95 border-orange-400 hover:border-orange-500'
+                          : isFailed
+                          ? 'bg-red-50/90 border-red-400 hover:border-red-500'
+                          : isDeliveredWithoutPhoto
+                          ? 'bg-yellow-50/95 border-yellow-400 hover:border-yellow-500'
+                          : isDeliveredComplete
+                          ? 'bg-emerald-100/80 border-emerald-500 hover:border-emerald-600'
+                          : item.coverageStatus === 'out_of_coverage'
+                          ? 'bg-red-50/60 border-red-200 hover:border-red-400'
+                          : 'bg-white border-gray-200 hover:border-emerald-400 shadow-2xs'
+                      }`}
+                    >
+                      <div className="flex items-center gap-3.5 min-w-0 flex-1 w-full sm:w-auto">
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <span className="w-7 h-7 bg-gray-100 text-gray-700 rounded-lg font-bold text-xs flex items-center justify-center" title="Orden de visita">
+                            #{item.orderIndex + 1}
                           </span>
-                          {item.phone && (
-                            <>
-                              <span>•</span>
-                              <span className="flex items-center gap-1 text-gray-700 font-medium">
-                                <Phone className="w-3 h-3 text-emerald-600" />
-                                {item.phone}
-                              </span>
-                            </>
-                          )}
-                          <span>•</span>
-                          <span className="font-mono">Lat: {item.lat.toFixed(4)}, Lng: {item.lng.toFixed(4)}</span>
+
+                          <span
+                            className={`w-10 h-10 rounded-2xl font-black text-xs flex items-center justify-center shadow-md ${
+                              isIncomplete
+                                ? 'bg-orange-500 text-white'
+                                : isFailed
+                                ? 'bg-red-600 text-white ring-2 ring-red-400'
+                                : isDeliveredWithoutPhoto
+                                ? 'bg-yellow-400 text-yellow-950 ring-2 ring-yellow-500'
+                                : isDeliveredComplete
+                                ? 'bg-emerald-600 text-white ring-2 ring-emerald-400'
+                                : item.coverageStatus === 'out_of_coverage'
+                                ? 'bg-red-600 text-white'
+                                : 'bg-emerald-600 text-white'
+                            }`}
+                            title={
+                              isIncomplete
+                                ? `Paquete #${item.originalNumber} sin ubicación`
+                                : isFailed
+                                ? `Paquete #${item.originalNumber} no se pudo entregar`
+                                : isDeliveredWithoutPhoto
+                                ? `Paquete #${item.originalNumber} entregado sin foto`
+                                : isDeliveredComplete
+                                ? `Paquete #${item.originalNumber} entregado completo`
+                                : `Paquete #${item.originalNumber}`
+                            }
+                          >
+                            #{item.originalNumber}
+                          </span>
+                        </div>
+
+                        <div className="space-y-0.5 min-w-0 flex-1">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <p
+                              title={isIncomplete ? 'Sin ubicación registrada' : item.address}
+                              className={`font-bold text-xs sm:text-sm truncate max-w-[210px] sm:max-w-xs md:max-w-sm ${
+                                isDeliveredComplete
+                                  ? 'text-emerald-950'
+                                  : isFailed
+                                  ? 'text-red-950'
+                                  : isDeliveredWithoutPhoto
+                                  ? 'text-yellow-950'
+                                  : 'text-gray-900'
+                              }`}
+                            >
+                              {isIncomplete
+                                ? 'Sin ubicación registrada'
+                                : /^https?:\/\//i.test(item.address.trim())
+                                ? 'Ubicación en mapa'
+                                : item.address}
+                            </p>
+                          </div>
+                          <div className="flex items-center gap-2 text-[10px] sm:text-xs text-gray-500 flex-wrap">
+                            <span
+                              className={`font-bold ${
+                                isIncomplete
+                                  ? 'text-orange-700'
+                                  : isFailed
+                                  ? 'text-red-700'
+                                  : isDeliveredWithoutPhoto
+                                  ? 'text-yellow-800'
+                                  : isDeliveredComplete
+                                  ? 'text-emerald-800'
+                                  : item.coverageStatus === 'out_of_coverage'
+                                  ? 'text-red-600'
+                                  : 'text-emerald-700'
+                              }`}
+                            >
+                              {isIncomplete ? 'Datos incompletos' : (item.province || 'Costa Rica')}
+                            </span>
+                            {item.phone && (() => {
+                              const waUrl = buildWhatsAppUrl(item.phone);
+                              const waPresetUrl = buildWhatsAppUrl(
+                                item.phone,
+                                buildLocationRequestMessage(item.originalNumber)
+                              );
+                              return (
+                                <>
+                                  <span>•</span>
+                                  {waUrl ? (
+                                    <div className="flex items-center gap-1.5 flex-wrap">
+                                      <a
+                                        href={waUrl}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        onClick={e => e.stopPropagation()}
+                                        className="flex items-center gap-1 text-emerald-700 hover:text-emerald-800 font-semibold underline decoration-emerald-400/70"
+                                        title="Abrir chat en WhatsApp"
+                                      >
+                                        <MessageCircle className="w-3.5 h-3.5 text-green-600" />
+                                        <span>{item.phone}</span>
+                                      </a>
+                                      {waPresetUrl && (
+                                        <a
+                                          href={waPresetUrl}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={e => e.stopPropagation()}
+                                          className="bg-green-100 hover:bg-green-200 text-green-900 border border-green-300 p-1 rounded-full flex items-center justify-center transition-colors"
+                                          title="Enviar mensaje preestablecido pidiendo ubicación por WhatsApp"
+                                          aria-label="Pedir ubicación por WhatsApp"
+                                        >
+                                          <Send className="w-2.5 h-2.5 text-green-700" />
+                                        </a>
+                                      )}
+                                    </div>
+                                  ) : (
+                                    <span className="flex items-center gap-1 text-gray-700 font-medium">
+                                      <Phone className="w-3 h-3 text-emerald-600" />
+                                      {item.phone}
+                                    </span>
+                                  )}
+                                </>
+                              );
+                            })()}
+                          </div>
                         </div>
                       </div>
-                    </div>
 
-                    <div className="flex items-center gap-2.5 w-full sm:w-auto justify-between sm:justify-end border-t sm:border-t-0 pt-2 sm:pt-0 border-gray-100" onClick={e => e.stopPropagation()}>
-                      {item.coverageStatus === 'out_of_coverage' ? (
-                        <span className="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-red-200">
-                          Fuera de cobertura
-                        </span>
-                      ) : item.status === 'delivered' ? (
-                        <span className="bg-teal-100 text-teal-800 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-teal-200">
-                          Entregado (Oculto en mapa)
-                        </span>
-                      ) : (
-                        <span className="bg-emerald-100 text-emerald-800 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-emerald-200">
-                          En ruta
-                        </span>
-                      )}
+                      <div className="flex items-center gap-2 w-full sm:w-auto justify-between sm:justify-end flex-wrap border-t sm:border-t-0 pt-2 sm:pt-0 border-gray-100" onClick={e => e.stopPropagation()}>
+                        {isIncomplete && (
+                          <span className="bg-orange-100 text-orange-900 text-[10px] font-bold px-2.5 py-0.5 rounded-lg border border-orange-300">
+                            Falta ubicación
+                          </span>
+                        )}
 
-                      {/* Edit Button */}
-                      <button
-                        onClick={() => onEditItem(item)}
-                        className="bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1 transition-colors border border-gray-200"
-                        title="Editar número y ubicación"
-                      >
-                        <Edit3 className="w-3.5 h-3.5" />
-                        <span>Editar</span>
-                      </button>
+                        {isFailed && (
+                          <span className="bg-red-200 text-red-950 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-red-400">
+                            No entregada
+                          </span>
+                        )}
 
-                      {item.coverageStatus === 'in_coverage' && (
-                        <select
-                          value={item.status}
-                          onChange={e => onUpdateStatus(item.id, e.target.value as DeliveryItem['status'])}
-                          className={`text-xs font-semibold px-3 py-1.5 rounded-xl border outline-none transition-colors ${
-                            item.status === 'delivered'
-                              ? 'bg-teal-100 text-teal-800 border-teal-300'
-                              : item.status === 'in_transit'
-                              ? 'bg-blue-100 text-blue-800 border-blue-300'
-                              : item.status === 'failed'
-                              ? 'bg-orange-100 text-orange-800 border-orange-300'
-                              : 'bg-amber-100 text-amber-800 border-amber-300'
+                        {isDeliveredWithoutPhoto && (
+                          <span className="bg-yellow-300 text-yellow-950 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-yellow-500">
+                            Falta foto
+                          </span>
+                        )}
+
+                        {isDeliveredComplete && (
+                          <span className="bg-emerald-200 text-emerald-950 text-[10px] font-bold px-2.5 py-0.5 rounded-full border border-emerald-400">
+                            Entregado
+                          </span>
+                        )}
+
+                        {item.coverageStatus === 'out_of_coverage' && !isIncomplete && !isFailed && (
+                          <span className="bg-red-100 text-red-800 text-[10px] font-bold px-2 py-0.5 rounded-lg border border-red-200">
+                            Fuera de cobertura
+                          </span>
+                        )}
+
+                        {/* Photo Button (Icon Only) */}
+                        <button
+                          onClick={() => onOpenPhotoModal(item)}
+                          className={`p-2 rounded-xl flex items-center justify-center transition-colors border shadow-2xs ${
+                            isDeliveredWithoutPhoto
+                              ? 'bg-yellow-400 hover:bg-yellow-500 text-yellow-950 border-yellow-500'
+                              : item.deliveryPhoto
+                              ? 'bg-indigo-600 hover:bg-indigo-700 text-white border-indigo-600'
+                              : 'bg-gray-100 hover:bg-indigo-50 text-gray-700 hover:text-indigo-700 border-gray-200'
                           }`}
+                          title={item.deliveryPhoto ? 'Ver o reenviar foto de entrega' : 'Tomar foto de entrega'}
+                          aria-label={item.deliveryPhoto ? 'Ver foto de entrega' : 'Tomar foto de entrega'}
                         >
-                          <option value="pending">Pendiente</option>
-                          <option value="in_transit">En camino</option>
-                          <option value="delivered">Entregada</option>
-                          <option value="failed">No entregada</option>
-                        </select>
-                      )}
+                          <Camera className="w-4 h-4" />
+                        </button>
 
-                      <button
-                        onClick={() => onDeleteItem(item.id)}
-                        className="text-gray-400 hover:text-red-600 p-2 rounded-xl hover:bg-gray-100 transition-colors"
-                        title="Eliminar paquete"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                        {/* WhatsApp Buttons (Icon Only, only if phone saved) */}
+                        {(() => {
+                          const waUrl = buildWhatsAppUrl(item.phone);
+                          const waPresetUrl = buildWhatsAppUrl(
+                            item.phone,
+                            buildLocationRequestMessage(item.originalNumber)
+                          );
+                          if (!waUrl) return null;
+                          return (
+                            <div className="flex items-center gap-1.5">
+                              <a
+                                href={waUrl}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="bg-green-600 hover:bg-green-700 text-white p-2 rounded-xl flex items-center justify-center transition-colors shadow-2xs"
+                                title={`Abrir WhatsApp (${item.phone})`}
+                                aria-label="Abrir WhatsApp"
+                              >
+                                <MessageCircle className="w-4 h-4" />
+                              </a>
+                              {waPresetUrl && (
+                                <a
+                                  href={waPresetUrl}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="bg-green-100 hover:bg-green-200 text-green-900 border border-green-300 p-2 rounded-full flex items-center justify-center transition-colors shadow-2xs"
+                                  title="Enviar mensaje preestablecido para pedir ubicación"
+                                  aria-label="Enviar mensaje preestablecido"
+                                >
+                                  <Send className="w-3.5 h-3.5 text-green-700" />
+                                </a>
+                              )}
+                            </div>
+                          );
+                        })()}
+
+                        {/* Waze Button (Icon Only, only when package has location) */}
+                        {!isIncomplete && (
+                          <a
+                            href={`https://waze.com/ul?ll=${item.lat},${item.lng}&navigate=yes`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="bg-sky-500 hover:bg-sky-600 text-white p-2 rounded-xl flex items-center justify-center transition-colors shadow-2xs"
+                            title="Abrir ubicación en Waze"
+                            aria-label="Abrir en Waze"
+                          >
+                            <Navigation className="w-4 h-4 transform rotate-45" />
+                          </a>
+                        )}
+
+                        {/* Edit Button (Icon Only) */}
+                        <button
+                          onClick={() => onEditItem(item)}
+                          className={`p-2 rounded-xl flex items-center justify-center transition-colors border ${
+                            isIncomplete
+                              ? 'bg-orange-500 hover:bg-orange-600 text-white border-orange-500'
+                              : 'bg-gray-100 hover:bg-emerald-50 text-gray-700 hover:text-emerald-700 border-gray-200'
+                          }`}
+                          title={isIncomplete ? 'Completar ubicación' : 'Editar paquete y ubicación'}
+                          aria-label="Editar paquete"
+                        >
+                          <Edit3 className="w-4 h-4" />
+                        </button>
+
+                        {!isIncomplete && item.coverageStatus === 'in_coverage' && (
+                          <select
+                            value={item.status}
+                            onChange={e => onUpdateStatus(item.id, e.target.value as DeliveryItem['status'])}
+                            className={`text-xs font-semibold px-2.5 py-1.5 rounded-xl border outline-none transition-colors ${
+                              isDeliveredWithoutPhoto
+                                ? 'bg-yellow-200 text-yellow-950 border-yellow-400'
+                                : isDeliveredComplete
+                                ? 'bg-emerald-200 text-emerald-950 border-emerald-400'
+                                : item.status === 'in_transit'
+                                ? 'bg-blue-100 text-blue-800 border-blue-300'
+                                : isFailed
+                                ? 'bg-red-200 text-red-950 border-red-400'
+                                : 'bg-amber-100 text-amber-800 border-amber-300'
+                            }`}
+                          >
+                            <option value="pending">Pendiente</option>
+                            <option value="in_transit">En camino</option>
+                            <option value="delivered">Entregada</option>
+                            <option value="failed">No entregada</option>
+                          </select>
+                        )}
+
+                        <button
+                          onClick={() => onDeleteItem(item.id)}
+                          className="text-gray-400 hover:text-red-600 p-2 rounded-xl hover:bg-gray-100 transition-colors"
+                          title="Eliminar paquete"
+                          aria-label="Eliminar paquete"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </div>
         )}
       </div>
+
+      <WhatsAppMessageModal
+        isOpen={isWhatsAppMsgOpen}
+        onClose={() => setIsWhatsAppMsgOpen(false)}
+      />
     </div>
   );
 };

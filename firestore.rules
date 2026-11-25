@@ -1,0 +1,84 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global safety net: default deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isValidDeliveryItem(data) {
+      return data.keys().hasAll(['id', 'originalNumber', 'address', 'lat', 'lng', 'status', 'coverageStatus', 'orderIndex']) &&
+             data.keys().hasOnly(['id', 'originalNumber', 'address', 'lat', 'lng', 'hasLocation', 'status', 'coverageStatus', 'province', 'orderIndex', 'phone', 'notes', 'distanceFromPrevKm', 'estimatedMinutes', 'assignedDriverId', 'assignedDriverName', 'deliveryPhoto', 'deliveryPhotoAt', 'updatedAt', 'createdAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.originalNumber is number &&
+             data.address is string && data.address.size() <= 500 &&
+             data.lat is number && data.lat >= -90 && data.lat <= 90 &&
+             data.lng is number && data.lng >= -180 && data.lng <= 180 &&
+             (!('hasLocation' in data) || data.hasLocation is bool) &&
+             data.status is string && data.status in ['pending', 'in_transit', 'delivered', 'failed'] &&
+             data.coverageStatus is string && data.coverageStatus in ['in_coverage', 'out_of_coverage', 'incomplete'] &&
+             data.orderIndex is number &&
+             (!('deliveryPhoto' in data) || (data.deliveryPhoto is string && data.deliveryPhoto.size() <= 600000)) &&
+             (!('deliveryPhotoAt' in data) || (data.deliveryPhotoAt is string && data.deliveryPhotoAt.size() <= 100));
+    }
+
+    function isValidDriverLocation(data) {
+      return data.keys().hasAll(['id', 'driverName', 'lat', 'lng', 'updatedAt']) &&
+             data.keys().hasOnly(['id', 'driverName', 'lat', 'lng', 'heading', 'speed', 'updatedAt']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.driverName is string && data.driverName.size() <= 100 &&
+             data.lat is number && data.lat >= -90 && data.lat <= 90 &&
+             data.lng is number && data.lng >= -180 && data.lng <= 180 &&
+             data.updatedAt is number;
+    }
+
+    function isValidRouteSession(data) {
+      return data.keys().hasAll(['id', 'name', 'date', 'status']) &&
+             data.keys().hasOnly(['id', 'name', 'date', 'status', 'totalDistanceKm', 'totalMinutes', 'createdAt', 'items']) &&
+             data.id is string && data.id.size() <= 128 &&
+             data.name is string && data.name.size() <= 200 &&
+             data.date is string && data.date.size() <= 100 &&
+             data.status is string && data.status.size() <= 50;
+    }
+
+    // Deliveries Collection
+    match /deliveries/{deliveryId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(deliveryId) && isValidDeliveryItem(incoming());
+      allow update: if isSignedIn() && isValidId(deliveryId) && isValidDeliveryItem(incoming());
+      allow delete: if isSignedIn() && isValidId(deliveryId);
+    }
+
+    // Drivers Live Locations Collection
+    match /drivers/{driverId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && isValidId(driverId) && isValidDriverLocation(incoming());
+      allow delete: if isSignedIn() && isValidId(driverId);
+    }
+
+    // Saved Routes Collection
+    match /routes/{routeId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && isValidId(routeId) && isValidRouteSession(incoming());
+      allow update: if isSignedIn() && isValidId(routeId) && isValidRouteSession(incoming());
+      allow delete: if isSignedIn() && isValidId(routeId);
+    }
+  }
+}

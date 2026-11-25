@@ -1,58 +1,83 @@
 import React from 'react';
-import { Navigation, MapPin, CheckCircle2, Clock, Settings, Bookmark } from 'lucide-react';
-import { DeliveryItem } from '../types';
+import { Navigation, MapPin, Settings, Bookmark, User as UserIcon, LogOut, LogIn, Users } from 'lucide-react';
+import { User } from 'firebase/auth';
+import { PWAInstallButton } from './PWAInstallButton';
+
+interface DriverInfo {
+  id: string;
+  driverName: string;
+  lat: number;
+  lng: number;
+}
 
 interface HeaderProps {
-  items: DeliveryItem[];
   onOpenSettings: () => void;
   onOpenSavedRoutes: () => void;
   gpsActive: boolean;
   onToggleGps: () => void;
+  user: User | null;
+  onSignIn: () => void;
+  onSignOut: () => void;
+  remoteDrivers: DriverInfo[];
+  selectedDriverId: string | null;
+  onSelectDriver: (driverId: string | null) => void;
 }
 
 export const Header: React.FC<HeaderProps> = ({
-  items,
   onOpenSettings,
   onOpenSavedRoutes,
   gpsActive,
-  onToggleGps
+  onToggleGps,
+  user,
+  onSignIn,
+  onSignOut,
+  remoteDrivers,
+  selectedDriverId,
+  onSelectDriver
 }) => {
-  const pendingCount = items.filter(i => i.status === 'pending' || i.status === 'in_transit').length;
-  const completedCount = items.filter(i => i.status === 'delivered').length;
-
   return (
     <header className="bg-white border-b border-gray-200 sticky top-0 z-40 shadow-xs">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex items-center justify-between h-16">
+        <div className="flex items-center justify-between h-14">
           {/* Logo & Name */}
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-emerald-600/20">
-              <Navigation className="w-5 h-5 transform rotate-45" />
+            <div className="w-9 h-9 bg-emerald-600 rounded-xl flex items-center justify-center text-white shadow-md shadow-emerald-600/20">
+              <Navigation className="w-4.5 h-4.5 transform rotate-45" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold tracking-tight text-gray-900 flex items-center gap-1.5">
+            <div className="flex items-center gap-2">
+              <h1 className="text-lg font-bold tracking-tight text-gray-900">
                 RUTEO
-                <span className="text-xs font-semibold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                  Pro
-                </span>
               </h1>
-              <p className="text-xs text-gray-500 hidden sm:block">Optimización inteligente de entregas</p>
             </div>
           </div>
 
-          {/* Counters & GPS Status */}
-          <div className="flex items-center gap-2 sm:gap-4">
-            <div className="flex items-center gap-1.5 bg-amber-50 text-amber-800 px-3 py-1.5 rounded-lg text-xs font-medium border border-amber-200">
-              <Clock className="w-3.5 h-3.5 text-amber-600" />
-              <span>Pendientes:</span>
-              <strong className="text-amber-900 font-bold">{pendingCount}</strong>
+          {/* Driver Route Selector & Controls */}
+          <div className="flex items-center gap-2.5">
+            {/* Driver Route Filter Dropdown */}
+            <div className="hidden md:flex items-center gap-1.5 bg-gray-50 border border-gray-200 rounded-xl px-3 py-1.5">
+              <Users className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+              <span className="text-[11px] font-bold text-gray-600">Ruta de:</span>
+              <select
+                value={selectedDriverId || 'all'}
+                onChange={e => onSelectDriver(e.target.value === 'all' ? null : e.target.value)}
+                className="bg-transparent text-xs font-bold text-gray-900 outline-none cursor-pointer"
+              >
+                <option value="all">Todos los conductores</option>
+                {user && (
+                  <option value={user.uid}>
+                    Tú ({user.displayName || user.email?.split('@')[0] || 'Conductor'})
+                  </option>
+                )}
+                {remoteDrivers.map(d => (
+                  <option key={d.id} value={d.id}>
+                    {d.driverName}
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className="flex items-center gap-1.5 bg-emerald-50 text-emerald-800 px-3 py-1.5 rounded-lg text-xs font-medium border border-emerald-200">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-              <span className="hidden sm:inline">Entregadas:</span>
-              <strong className="text-emerald-900 font-bold">{completedCount}</strong>
-            </div>
+            {/* Install PWA / Windows Desktop App */}
+            <PWAInstallButton />
 
             {/* GPS Toggle */}
             <button
@@ -85,6 +110,41 @@ export const Header: React.FC<HeaderProps> = ({
             >
               <Settings className="w-5 h-5" />
             </button>
+
+            {/* User Auth Button */}
+            {user ? (
+              <div className="flex items-center gap-1.5 pl-1 border-l border-gray-200">
+                <div className="hidden sm:flex flex-col text-right">
+                  <span className="text-xs font-bold text-gray-800 truncate max-w-[100px]">
+                    {user.displayName || user.email?.split('@')[0]}
+                  </span>
+                  <span className="text-[9px] text-emerald-600 font-semibold">Sincronizado</span>
+                </div>
+                {user.photoURL ? (
+                  <img src={user.photoURL} alt="Avatar" className="w-7 h-7 rounded-full border border-emerald-500" />
+                ) : (
+                  <div className="w-7 h-7 bg-emerald-100 text-emerald-700 rounded-full flex items-center justify-center font-bold text-xs">
+                    <UserIcon className="w-4 h-4" />
+                  </div>
+                )}
+                <button
+                  onClick={onSignOut}
+                  className="p-1.5 text-gray-400 hover:text-red-600 rounded-lg transition-colors"
+                  title="Cerrar sesión"
+                >
+                  <LogOut className="w-4 h-4" />
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={onSignIn}
+                className="bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-sm transition-all"
+                title="Iniciar sesión para sincronizar"
+              >
+                <LogIn className="w-3.5 h-3.5" />
+                <span>Conectar</span>
+              </button>
+            )}
           </div>
         </div>
       </div>
