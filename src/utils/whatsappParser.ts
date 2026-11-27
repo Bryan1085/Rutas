@@ -33,39 +33,150 @@ export function buildWhatsAppUrl(phone?: string, presetText?: string): string | 
   if (digits.length === 8) {
     digits = `506${digits}`;
   }
+  if (digits.length < 7 || digits.length > 15) {
+    return null;
+  }
   const baseUrl = `https://wa.me/${digits}`;
   return presetText ? `${baseUrl}?text=${encodeURIComponent(presetText)}` : baseUrl;
 }
 
 export const WHATSAPP_TEMPLATE_STORAGE_KEY = 'ruteo_whatsapp_template';
-export const DEFAULT_LOCATION_REQUEST_TEMPLATE =
+export const WHATSAPP_TEMPLATES_STORAGE_KEY = 'ruteo_whatsapp_templates';
+export const WHATSAPP_TEMPLATE_CURSOR_KEY = 'ruteo_whatsapp_template_cursor';
+
+const LEGACY_DEFAULT_LOCATION_REQUEST_TEMPLATE =
   'Hola, te saludamos por tu paquete #{paquete}. ¿Nos podrías compartir tu ubicación actual o enlace de Google Maps para realizar la entrega, por favor?';
 
-export function getLocationRequestTemplate(): string {
+export const DEFAULT_LOCATION_REQUEST_TEMPLATES: string[] = [
+  'Hola {nombre}, te saludamos por tu paquete #{paquete}. ¿Nos podrías compartir tu ubicación actual o enlace de Google Maps o Waze para realizar la entrega, por favor?',
+  '¡Buenas {nombre}! Vamos con la entrega de tu pedido #{paquete}. ¿Me regalas tu ubicación por acá o el pin del mapa para poder llegar sin problema?',
+  'Qué tal {nombre}, te escribimos por la entrega del paquete #{paquete}. ¿Podrías enviarnos tu ubicación exacta por este medio para coordinar la visita?',
+];
+
+export const DEFAULT_LOCATION_REQUEST_TEMPLATE = DEFAULT_LOCATION_REQUEST_TEMPLATES[0];
+
+export function getLocationRequestTemplates(): string[] {
   try {
-    const saved = localStorage.getItem(WHATSAPP_TEMPLATE_STORAGE_KEY);
-    return saved && saved.trim() ? saved : DEFAULT_LOCATION_REQUEST_TEMPLATE;
+    const rawList = localStorage.getItem(WHATSAPP_TEMPLATES_STORAGE_KEY);
+    if (rawList) {
+      const parsed = JSON.parse(rawList);
+      if (Array.isArray(parsed)) {
+        const cleaned = parsed
+          .filter((item): item is string => typeof item === 'string')
+          .map(item => item.trim())
+          .filter(Boolean);
+        if (cleaned.length > 0) {
+          return cleaned;
+        }
+      }
+    }
+
+    const legacySaved = localStorage.getItem(WHATSAPP_TEMPLATE_STORAGE_KEY);
+    if (legacySaved && legacySaved.trim()) {
+      const trimmed = legacySaved.trim();
+      if (trimmed !== LEGACY_DEFAULT_LOCATION_REQUEST_TEMPLATE && trimmed !== DEFAULT_LOCATION_REQUEST_TEMPLATE) {
+        return [trimmed, ...DEFAULT_LOCATION_REQUEST_TEMPLATES.slice(1)];
+      }
+    }
+
+    return [...DEFAULT_LOCATION_REQUEST_TEMPLATES];
   } catch {
-    return DEFAULT_LOCATION_REQUEST_TEMPLATE;
+    return [...DEFAULT_LOCATION_REQUEST_TEMPLATES];
   }
 }
 
-export function saveLocationRequestTemplate(template: string): void {
+export function saveLocationRequestTemplates(templates: string[]): string[] {
+  const cleaned = templates.map(t => t.trim()).filter(Boolean);
+  const finalTemplates = cleaned.length > 0 ? cleaned : [...DEFAULT_LOCATION_REQUEST_TEMPLATES];
   try {
-    const trimmed = template.trim();
-    if (!trimmed) {
-      localStorage.removeItem(WHATSAPP_TEMPLATE_STORAGE_KEY);
-    } else {
-      localStorage.setItem(WHATSAPP_TEMPLATE_STORAGE_KEY, trimmed);
-    }
+    localStorage.setItem(WHATSAPP_TEMPLATES_STORAGE_KEY, JSON.stringify(finalTemplates));
+    localStorage.setItem(WHATSAPP_TEMPLATE_STORAGE_KEY, finalTemplates[0]);
   } catch {
     // ignore storage errors
   }
+  return finalTemplates;
 }
 
-export function buildLocationRequestMessage(packageNumber: number): string {
-  const template = getLocationRequestTemplate();
-  return template.replace(/\{paquete\}/gi, String(packageNumber));
+export function getLocationRequestTemplate(): string {
+  return getLocationRequestTemplates()[0];
+}
+
+export function saveLocationRequestTemplate(template: string): void {
+  const current = getLocationRequestTemplates();
+  const trimmed = template.trim();
+  if (!trimmed) {
+    saveLocationRequestTemplates([...DEFAULT_LOCATION_REQUEST_TEMPLATES]);
+  } else {
+    saveLocationRequestTemplates([trimmed, ...current.slice(1)]);
+  }
+}
+
+export function getLocationRequestCursor(): number {
+  try {
+    const raw = localStorage.getItem(WHATSAPP_TEMPLATE_CURSOR_KEY);
+    const parsed = raw ? parseInt(raw, 10) : 0;
+    return Number.isFinite(parsed) && parsed >= 0 ? parsed : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function advanceLocationRequestCursor(totalTemplates?: number): number {
+  const count = Math.max(1, totalTemplates ?? getLocationRequestTemplates().length);
+  const next = (getLocationRequestCursor() + 1) % count;
+  try {
+    localStorage.setItem(WHATSAPP_TEMPLATE_CURSOR_KEY, String(next));
+  } catch {
+    // ignore storage errors
+  }
+  return next;
+}
+
+export function getRotatingLocationTemplate(
+  templates: string[],
+  rotationIndex: number
+): { template: string; templateIndex: number } {
+  const list = templates.length > 0 ? templates : DEFAULT_LOCATION_REQUEST_TEMPLATES;
+  const normalizedIdx = ((rotationIndex % list.length) + list.length) % list.length;
+  return {
+    template: list[normalizedIdx],
+    templateIndex: normalizedIdx,
+  };
+}
+
+export function formatLocationRequestMessage(
+  template: string,
+  packageNumber: number,
+  recipientName?: string
+): string {
+  const cleanName = recipientName?.trim() || '';
+  let result = template.replace(/\{paquete\}/gi, String(packageNumber));
+
+  if (cleanName) {
+    result = result.replace(/\{nombre\}/gi, cleanName);
+  } else {
+    result = result
+      .replace(/[ \t]*\(\s*\{nombre\}\s*\)/gi, '')
+      .replace(/\{nombre\}/gi, '')
+      .replace(/[ \t]+([,.;:!?])/g, '$1')
+      .replace(/([¡¿])[ \t]+/g, '$1')
+      .replace(/[ \t]+\n/g, '\n')
+      .replace(/[ \t]{2,}/g, ' ')
+      .trim();
+  }
+
+  return result;
+}
+
+export function buildLocationRequestMessage(
+  packageNumber: number,
+  recipientName?: string,
+  rotationIndex?: number
+): string {
+  const templates = getLocationRequestTemplates();
+  const idx = rotationIndex !== undefined ? rotationIndex : Math.abs(packageNumber);
+  const { template } = getRotatingLocationTemplate(templates, idx);
+  return formatLocationRequestMessage(template, packageNumber, recipientName);
 }
 
 // San José, Costa Rica center default

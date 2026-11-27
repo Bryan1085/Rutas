@@ -11,6 +11,43 @@ const DEFAULT_CR_LNG = -84.0907;
 
 const OLC_ALPHABET = '23456789CFGHJMPQRVWX';
 const OLC_PAIR_RESOLUTIONS = [20.0, 1.0, 0.05, 0.0025, 0.000125];
+const GEOHASH_ALPHABET = '0123456789bcdefghjkmnpqrstuvwxyz';
+
+function decodeGeohash(geohashInput: string): { lat: number; lng: number } | null {
+  const hash = geohashInput.toLowerCase().trim();
+  if (!hash || hash.length < 4) return null;
+
+  let latMin = -90.0;
+  let latMax = 90.0;
+  let lngMin = -180.0;
+  let lngMax = 180.0;
+  let isLng = true;
+
+  for (let i = 0; i < hash.length; i++) {
+    const idx = GEOHASH_ALPHABET.indexOf(hash[i]);
+    if (idx === -1) return null;
+    for (let bit = 4; bit >= 0; bit--) {
+      const bitVal = (idx >> bit) & 1;
+      if (isLng) {
+        const mid = (lngMin + lngMax) / 2;
+        if (bitVal === 1) lngMin = mid;
+        else lngMax = mid;
+      } else {
+        const mid = (latMin + latMax) / 2;
+        if (bitVal === 1) latMin = mid;
+        else latMax = mid;
+      }
+      isLng = !isLng;
+    }
+  }
+
+  const lat = (latMin + latMax) / 2;
+  const lng = (lngMin + lngMax) / 2;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180 || (lat === 0 && lng === 0)) {
+    return null;
+  }
+  return { lat: Number(lat.toFixed(6)), lng: Number(lng.toFixed(6)) };
+}
 
 function decodePlusCode(codeInput: string, refLat = DEFAULT_CR_LAT, refLng = DEFAULT_CR_LNG): { lat: number; lng: number } | null {
   const clean = codeInput.toUpperCase().replace(/\s+/g, '');
@@ -124,13 +161,15 @@ export function extractGoogleMapsUrlFromText(text: string): string | null {
   const fullUrlMatch = text.match(/https?:\/\/[^\s"'<>]+/i);
   if (fullUrlMatch) return fullUrlMatch[0];
 
-  const bareShortMatch = text.match(/\b(?:maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/maps|maps\.google\.com|www\.google\.com\/maps)\/[^\s"'<>]+/i);
+  const bareShortMatch = text.match(
+    /\b(?:maps\.app\.goo\.gl|goo\.gl\/maps|g\.co\/maps|maps\.google\.com|www\.google\.com\/maps|waze\.com|www\.waze\.com|ul\.waze\.com)\/[^\s"'<>]+/i
+  );
   if (bareShortMatch) return `https://${bareShortMatch[0]}`;
 
   return null;
 }
 
-function isGoogleMapsUrl(urlStr: string): boolean {
+function isSupportedMapUrl(urlStr: string): boolean {
   const lower = urlStr.toLowerCase();
   return (
     lower.includes('maps.app.goo.gl') ||
@@ -138,7 +177,9 @@ function isGoogleMapsUrl(urlStr: string): boolean {
     lower.includes('g.co/') ||
     lower.includes('maps.google.') ||
     lower.includes('google.com/maps') ||
-    lower.includes('google.co.cr/maps')
+    lower.includes('google.co.cr/maps') ||
+    lower.includes('waze.com/') ||
+    lower.includes('ul.waze.com/')
   );
 }
 
@@ -159,7 +200,10 @@ function extractReadableAddress(rawText: string, lat: number, lng: number, resol
 
   const textWithoutUrls = rawText
     .replace(/https?:\/\/[^\s]+/gi, '')
-    .replace(/\b(?:maps\.app\.goo\.gl|goo\.gl\/maps|g\.co)\/[^\s]+/gi, '')
+    .replace(/waze:\/\/[^\s]+/gi, '')
+    .replace(/\b(?:maps\.app\.goo\.gl|goo\.gl\/maps|g\.co|(?:www\.|ul\.)?waze\.com)\/[^\s]+/gi, '')
+    .replace(/^(?:usa waze para (?:ir|llegar|conducir) a|conduce (?:hasta|a)|use waze to drive to|drive to)\s+/i, '')
+    .replace(/\s*(?:usando waze|with waze)\s*:?\s*$/i, '')
     .replace(/lat(?:itud)?\s*[:=]?\s*-?\d+\.\d+/gi, '')
     .replace(/(?:lng|lon(?:gitud)?)\s*[:=]?\s*-?\d+\.\d+/gi, '')
     .replace(/[-+]?\d{1,2}\.\d+\s*,\s*[-+]?\d{1,3}\.\d+/g, '')
@@ -211,11 +255,14 @@ export function parseGoogleMapsUrl(rawInput: string, defaultNum: number): { loca
     }
   }
 
-  // Pattern C: Google Maps query params (q=, query=, ll=, sll=, center=, viewpoint=, destination=, daddr=, loc:)
+  // Pattern C: Google Maps & Waze query params (q=, query=, ll=, latlng=, sll=, center=, viewpoint=, destination=, daddr=, to=ll.)
   if (lat === null || lng === null) {
-    const queryCoordMatch = decodedText.match(
-      /[?&](?:q|query|ll|sll|center|viewpoint|destination|daddr)=(?:loc:)?(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i
-    );
+    const queryCoordMatch =
+      decodedText.match(
+        /[?&](?:q|query|ll|latlng|sll|center|viewpoint|destination|daddr)=(?:loc:|ll\.)?(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i
+      ) ||
+      decodedText.match(/[?&]to=ll\.(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i) ||
+      decodedText.match(/waze:\/\/\?(?:[^#\s]*&)?ll=(-?\d+\.\d+)\s*,\s*(-?\d+\.\d+)/i);
     if (queryCoordMatch) {
       lat = parseFloat(queryCoordMatch[1]);
       lng = parseFloat(queryCoordMatch[2]);
@@ -239,6 +286,18 @@ export function parseGoogleMapsUrl(rawInput: string, defaultNum: number): { loca
     if (atMatch) {
       lat = parseFloat(atMatch[1]);
       lng = parseFloat(atMatch[2]);
+    }
+  }
+
+  // Pattern E2: Waze short geohash URL (e.g. https://waze.com/ul/hd1u0x8r5)
+  if (lat === null || lng === null) {
+    const wazeHashMatch = decodedText.match(/(?:www\.|ul\.)?waze\.com\/ul\/h([0-9bcdefghjkmnpqrstuvwxyz]{5,12})\b/i);
+    if (wazeHashMatch) {
+      const decodedHash = decodeGeohash(wazeHashMatch[1]);
+      if (decodedHash) {
+        lat = decodedHash.lat;
+        lng = decodedHash.lng;
+      }
     }
   }
 
@@ -278,15 +337,20 @@ export function parseGoogleMapsUrl(rawInput: string, defaultNum: number): { loca
 
   // Validate coordinates reliability
   if (lat === null || lng === null || isNaN(lat) || isNaN(lng) || lat < -90 || lat > 90 || lng < -180 || lng > 180) {
-    if (text.includes('maps.app.goo.gl') || text.includes('goo.gl/maps') || text.includes('g.co/')) {
+    if (
+      text.includes('maps.app.goo.gl') ||
+      text.includes('goo.gl/maps') ||
+      text.includes('g.co/') ||
+      text.toLowerCase().includes('waze.com')
+    ) {
       return {
         location: null,
-        error: 'Enlace corto de Google Maps detectado. Usa "Verificar" o "Guardar" para obtener sus coordenadas automáticamente.'
+        error: 'Enlace corto detectado. Usa "Verificar" o "Guardar" para obtener sus coordenadas automáticamente.'
       };
     }
     return {
       location: null,
-      error: 'No se pudieron extraer coordenadas geográficas válidas de Google Maps o WhatsApp.'
+      error: 'No se pudieron extraer coordenadas geográficas válidas de WhatsApp, Google Maps o Waze.'
     };
   }
 
@@ -310,7 +374,7 @@ export async function resolveSharedLocationAsync(
     return { location: null, error: 'Texto vacío' };
   }
 
-  // 1. Try instant local parsing first
+  // 1. Try instant local parsing first (covers direct coords, Plus Codes, Waze ll=/to=ll./ul/h...)
   const syncResult = parseGoogleMapsUrl(text, defaultNum);
   if (syncResult.location) {
     return syncResult;
@@ -319,8 +383,8 @@ export async function resolveSharedLocationAsync(
   const originalNumber = extractPackageNumber(text, defaultNum);
   const urlInText = extractGoogleMapsUrlFromText(text);
 
-  // 2. If there's a Google Maps link (including maps.app.goo.gl / goo.gl/maps / g.co / place link), resolve via backend proxy
-  if (urlInText && isGoogleMapsUrl(urlInText)) {
+  // 2. If there's a Google Maps or Waze link, resolve via backend proxy
+  if (urlInText && isSupportedMapUrl(urlInText)) {
     try {
       const resp = await fetch('/api/resolve-map-link', {
         method: 'POST',
@@ -361,7 +425,7 @@ export async function resolveSharedLocationAsync(
     } catch {
       return {
         location: null,
-        error: 'No se pudo conectar al servidor para leer el enlace corto de Google Maps. Verifica tu conexión.'
+        error: 'No se pudo conectar al servidor para leer el enlace de mapa. Verifica tu conexión.'
       };
     }
   }
@@ -406,7 +470,7 @@ export async function resolveSharedLocationAsync(
     }
   }
 
-  // 4. Fallback: plain text shared from Google Maps (place name / address without URL)
+  // 4. Fallback: plain text shared from Google Maps or Waze (place name / address without URL)
   if (!urlInText && text.length >= 5) {
     try {
       const geoResp = await fetch('/api/geocode-place', {

@@ -17,6 +17,9 @@ const ALLOWED_MAPS_HOSTS = new Set([
   'google.com',
   'maps.google.co.cr',
   'www.google.co.cr',
+  'waze.com',
+  'www.waze.com',
+  'ul.waze.com',
 ]);
 
 function isPrivateOrDisallowedHost(hostname: string): boolean {
@@ -31,11 +34,9 @@ function isPrivateOrDisallowedHost(hostname: string): boolean {
   ) {
     return true;
   }
-  // Reject IPv4 literals
   if (/^\d{1,3}(\.\d{1,3}){3}$/.test(lower)) {
     return true;
   }
-  // Reject IPv6 literals
   if (lower.includes(':')) {
     return true;
   }
@@ -52,10 +53,12 @@ function parseAllowedGoogleMapsUrl(rawUrl: string): URL | null {
     if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
       return null;
     }
+    if (parsed.username || parsed.password) {
+      return null;
+    }
     if (isPrivateOrDisallowedHost(parsed.hostname)) {
       return null;
     }
-    // Force HTTPS for outbound fetch
     parsed.protocol = 'https:';
     return parsed;
   } catch {
@@ -73,16 +76,14 @@ function extractCoordsFromTextOrUrl(text: string): { lat: number; lng: number } 
   }
 
   const patterns: RegExp[] = [
-    // Exact pin in Google Maps data parameter
     /!3d(-?\d{1,2}\.\d+)!4d(-?\d{1,3}\.\d+)/,
-    // Query params (q=, query=, ll=, sll=, center=, viewpoint=, destination=, daddr=)
-    /[?&](?:q|query|ll|sll|center|viewpoint|destination|daddr)=(?:loc:)?(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/i,
-    // Viewport center @lat,lng
+    /[?&](?:q|query|ll|latlng|sll|center|viewpoint|destination|daddr)=(?:loc:|ll\.)?(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/i,
+    /[?&](?:to|from)=ll\.(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/i,
     /@(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/,
-    // Path /maps/dir//lat,lng or /maps/search/lat,lng
     /\/maps\/(?:dir\/\/|search\/|place\/)(-?\d{1,2}\.\d+)\s*,\s*(-?\d{1,3}\.\d+)/i,
-    // Static map center in og:image meta tags: center=9.9281%2C-84.0907
     /center=(-?\d{1,2}\.\d+)(?:,|%2C)(-?\d{1,3}\.\d+)/i,
+    /"latLng"\s*:\s*\{\s*"lat"\s*:\s*(-?\d{1,2}\.\d+)\s*,\s*"lng"\s*:\s*(-?\d{1,3}\.\d+)/i,
+    /"lat"\s*:\s*(-?\d{1,2}\.\d+)\s*,\s*"lo?ng?"\s*:\s*(-?\d{1,3}\.\d+)/i,
   ];
 
   for (const source of [decoded, text]) {
@@ -106,7 +107,6 @@ function extractCoordsFromTextOrUrl(text: string): { lat: number; lng: number } 
     }
   }
 
-  // Google Maps APP_INITIALIZATION_STATE fallback: [[[scale, lng, lat]
   const appStateMatch = text.match(/\[\[\[[\d.]+,\s*(-?\d{1,3}\.\d+),\s*(-?\d{1,2}\.\d+)\]/);
   if (appStateMatch) {
     const lng = parseFloat(appStateMatch[1]);
@@ -128,7 +128,6 @@ function extractCoordsFromTextOrUrl(text: string): { lat: number; lng: number } 
 }
 
 function extractPlaceNameFromUrlOrHtml(urlStr: string, html: string): string | null {
-  // 1. From /maps/place/Place+Name/@...
   const placeMatch = urlStr.match(/\/maps\/place\/([^/@?]+)/i);
   if (placeMatch && placeMatch[1]) {
     try {
@@ -141,7 +140,6 @@ function extractPlaceNameFromUrlOrHtml(urlStr: string, html: string): string | n
     }
   }
 
-  // 2. From ?q=Place+Name (if not coordinates)
   try {
     const u = new URL(urlStr);
     const q = u.searchParams.get('q') || u.searchParams.get('query');
@@ -152,14 +150,15 @@ function extractPlaceNameFromUrlOrHtml(urlStr: string, html: string): string | n
     // ignore
   }
 
-  // 3. From HTML og:title or <title>
   if (html) {
     const ogTitle =
       html.match(/<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']+)["']/i)?.[1] ||
       html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:title["']/i)?.[1];
     if (ogTitle) {
-      const cleaned = ogTitle.replace(/\s*[-·]\s*Google Maps$/i, '').trim();
-      if (cleaned && cleaned.toLowerCase() !== 'google maps') {
+      const cleaned = ogTitle
+        .replace(/\s*[-·|]\s*(?:Google Maps|Waze)$/i, '')
+        .trim();
+      if (cleaned && cleaned.toLowerCase() !== 'google maps' && cleaned.toLowerCase() !== 'waze') {
         return cleaned;
       }
     }
@@ -200,11 +199,38 @@ async function geocodeViaNominatim(query: string): Promise<{ lat: number; lng: n
   return null;
 }
 
+const rateLimitStore = new Map<string, { count: number; resetAt: number }>();
+
+function checkApiRateLimit(req: Request, maxRequests = 30, windowMs = 60_000): boolean {
+  const ip = req.ip || req.socket.remoteAddress || 'unknown';
+  const now = Date.now();
+  const entry = rateLimitStore.get(ip);
+  if (!entry || now > entry.resetAt) {
+    rateLimitStore.set(ip, { count: 1, resetAt: now + windowMs });
+    return true;
+  }
+  if (entry.count >= maxRequests) {
+    return false;
+  }
+  entry.count += 1;
+  return true;
+}
+
 async function startServer() {
   const app = express();
+  app.disable('x-powered-by');
+  app.use((_req: Request, res: Response, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    next();
+  });
   app.use(express.json({ limit: '64kb' }));
 
   app.post('/api/resolve-map-link', async (req: Request, res: Response) => {
+    if (!checkApiRateLimit(req, 30, 60_000)) {
+      res.status(429).json({ error: 'Demasiadas consultas seguidas. Intenta en un minuto.' });
+      return;
+    }
     try {
       const rawUrl = typeof req.body?.url === 'string' ? req.body.url.trim() : '';
       if (!rawUrl || rawUrl.length > 2000) {
@@ -214,7 +240,7 @@ async function startServer() {
 
       const initialUrl = parseAllowedGoogleMapsUrl(rawUrl);
       if (!initialUrl) {
-        res.status(400).json({ error: 'Solo se permiten enlaces válidos de Google Maps.' });
+        res.status(400).json({ error: 'Solo se permiten enlaces válidos de Google Maps o Waze.' });
         return;
       }
 
@@ -244,13 +270,12 @@ async function startServer() {
             } catch {
               break;
             }
-            if (isPrivateOrDisallowedHost(resolvedHop.hostname)) {
+            if (resolvedHop.username || resolvedHop.password || isPrivateOrDisallowedHost(resolvedHop.hostname)) {
               break;
             }
             resolvedHop.protocol = 'https:';
             currentUrl = resolvedHop;
 
-            // Check if the redirected URL already carries coordinates
             coords = extractCoordsFromTextOrUrl(currentUrl.toString());
             if (coords) {
               break;
@@ -259,9 +284,16 @@ async function startServer() {
           }
 
           if (response.ok) {
-            const text = await response.text();
-            html = text.slice(0, 300000);
-            coords = extractCoordsFromTextOrUrl(html);
+            const contentLength = Number(response.headers.get('content-length') || '0');
+            const contentType = (response.headers.get('content-type') || '').toLowerCase();
+            if (
+              (!contentLength || contentLength <= 2_000_000) &&
+              (!contentType || contentType.includes('text/') || contentType.includes('html'))
+            ) {
+              const text = await response.text();
+              html = text.slice(0, 300000);
+              coords = extractCoordsFromTextOrUrl(html);
+            }
           }
           break;
         }
@@ -299,6 +331,10 @@ async function startServer() {
   });
 
   app.post('/api/geocode-place', async (req: Request, res: Response) => {
+    if (!checkApiRateLimit(req, 20, 60_000)) {
+      res.status(429).json({ error: 'Demasiadas consultas seguidas. Intenta en un minuto.' });
+      return;
+    }
     try {
       const query = typeof req.body?.query === 'string' ? req.body.query.trim() : '';
       if (!query || query.length > 300) {
@@ -317,6 +353,10 @@ async function startServer() {
       console.error('Error geocoding place:', error);
       res.status(500).json({ error: 'Error buscando la ubicación.' });
     }
+  });
+
+  app.use('/api', (_req: Request, res: Response) => {
+    res.status(404).json({ error: 'Ruta API no encontrada.' });
   });
 
   if (process.env.NODE_ENV !== 'production') {

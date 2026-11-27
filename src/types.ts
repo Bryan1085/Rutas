@@ -17,8 +17,7 @@ export interface DeliveryItem {
   orderIndex: number; // Visit sequence index (0, 1, 2...)
   distanceFromPrevKm?: number;
   estimatedMinutes?: number;
-  assignedDriverId?: string;
-  assignedDriverName?: string;
+  failureReason?: string;
   deliveryPhoto?: string;
   deliveryPhotoAt?: string;
 }
@@ -42,3 +41,11 @@ export interface GpsPosition {
   speed?: number;
   timestamp: number;
 }
+
+export interface DriverProfile {
+  id: string;
+  driverName: string;
+  active: boolean;
+  createdAtMs?: number;
+}
+

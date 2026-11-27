@@ -31,7 +31,7 @@ export const PWAInstallButton: React.FC = () => {
       <>
         <button
           onClick={() => setShowGuide(true)}
-          className="flex items-center gap-1.5 rounded-xl border border-emerald-300 bg-emerald-50 hover:bg-emerald-100 px-2.5 py-1.5 text-xs font-bold text-emerald-800 transition-colors"
+          className="flex items-center gap-1.5 rounded-xl border border-emerald-300 dark:border-emerald-700 bg-emerald-50 dark:bg-emerald-950/60 hover:bg-emerald-100 dark:hover:bg-emerald-900/70 px-2.5 py-1.5 text-xs font-bold text-emerald-800 dark:text-emerald-200 transition-colors"
           title={isWindows ? 'Instalar en Windows' : 'Instalar en iPhone / iPad'}
         >
           {isWindows ? <Monitor className="w-3.5 h-3.5" /> : <Smartphone className="w-3.5 h-3.5" />}
@@ -40,31 +40,31 @@ export const PWAInstallButton: React.FC = () => {
 
         {showGuide && (
           <div className="fixed inset-0 z-[1200] flex items-center justify-center bg-black/50 backdrop-blur-xs p-4">
-            <div className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl border border-gray-100 space-y-4">
+            <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-slate-900 p-6 shadow-2xl border border-gray-100 dark:border-slate-800 space-y-4">
               <div className="flex items-center justify-between">
-                <h3 className="text-base font-black text-gray-900">
+                <h3 className="text-base font-black text-gray-900 dark:text-slate-100">
                   {isWindows ? 'Instalar en Windows' : 'Instalar en iPhone / iPad'}
                 </h3>
                 <button
                   onClick={() => setShowGuide(false)}
-                  className="text-gray-400 hover:text-gray-600 p-1 rounded-lg"
+                  className="text-gray-400 hover:text-gray-600 dark:text-slate-400 dark:hover:text-slate-200 p-1 rounded-lg"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
 
               {isWindows ? (
-                <div className="text-xs text-gray-600 space-y-2 leading-relaxed">
+                <div className="text-xs text-gray-600 dark:text-slate-300 space-y-2 leading-relaxed">
                   <p>Para usar <strong>RUTEO</strong> como aplicación de escritorio en Windows:</p>
-                  <ol className="list-decimal list-inside space-y-1.5 font-medium text-gray-800">
+                  <ol className="list-decimal list-inside space-y-1.5 font-medium text-gray-800 dark:text-slate-200">
                     <li>Abre la aplicación en una pestaña directa de <strong>Microsoft Edge</strong> o <strong>Google Chrome</strong>.</li>
                     <li>Haz clic en el ícono de <strong>Instalar</strong> en el extremo derecho de la barra de direcciones (o abre el menú <strong>⋯ / ⋮ → Aplicaciones → Instalar RUTEO</strong>).</li>
                   </ol>
                 </div>
               ) : (
-                <div className="text-xs text-gray-600 space-y-2 leading-relaxed">
+                <div className="text-xs text-gray-600 dark:text-slate-300 space-y-2 leading-relaxed">
                   <p>Para instalar <strong>RUTEO</strong> en tu iPhone o iPad:</p>
-                  <ol className="list-decimal list-inside space-y-1.5 font-medium text-gray-800">
+                  <ol className="list-decimal list-inside space-y-1.5 font-medium text-gray-800 dark:text-slate-200">
                     <li>Toca el botón <strong>Compartir</strong> en la barra de Safari.</li>
                     <li>Desliza hacia abajo y selecciona <strong>Agregar a inicio</strong>.</li>
                   </ol>

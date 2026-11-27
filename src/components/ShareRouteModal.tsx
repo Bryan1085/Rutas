@@ -120,24 +120,24 @@ export const ShareRouteModal: React.FC<ShareRouteModalProps> = ({
     : null;
 
   return (
-    <div className="fixed inset-0 z-[1200] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-      <div className="bg-white rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-gray-100 flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-[1200] bg-black/60 dark:bg-black/75 backdrop-blur-xs flex items-center justify-center p-4">
+      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 border border-gray-100 dark:border-slate-800 flex flex-col max-h-[90vh]">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-sky-50">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-sky-50 dark:bg-sky-950/40">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-sky-500 rounded-2xl flex items-center justify-center text-white shadow-sm">
               <Navigation className="w-5 h-5 transform rotate-45" />
             </div>
             <div>
-              <h2 className="text-base font-black text-gray-900">Compartir Ruta a Waze</h2>
-              <p className="text-xs text-sky-900">
+              <h2 className="text-base font-black text-gray-900 dark:text-slate-100">Compartir Ruta a Waze</h2>
+              <p className="text-xs text-sky-900 dark:text-sky-200">
                 {routeStops.length} {routeStops.length === 1 ? 'parada con ubicación' : 'paradas en orden de ruta'}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-2 rounded-xl hover:bg-sky-100/60 transition-colors"
+            className="text-gray-400 dark:text-slate-400 hover:text-gray-600 dark:hover:text-slate-200 p-2 rounded-xl hover:bg-sky-100/60 dark:hover:bg-slate-800 transition-colors"
             aria-label="Cerrar"
           >
             <X className="w-5 h-5" />
@@ -146,21 +146,21 @@ export const ShareRouteModal: React.FC<ShareRouteModalProps> = ({
 
         {/* Body */}
         <div className="p-5 space-y-4 overflow-y-auto flex-1">
-          <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 cursor-pointer select-none">
+          <label className="flex items-center gap-2 text-xs font-semibold text-gray-700 dark:text-slate-300 cursor-pointer select-none">
             <input
               type="checkbox"
               checked={includeDelivered}
               onChange={(e) => setIncludeDelivered(e.target.checked)}
-              className="rounded border-gray-300 text-sky-600 focus:ring-sky-500"
+              className="rounded border-gray-300 dark:border-slate-600 dark:bg-slate-800 text-sky-600 focus:ring-sky-500"
             />
             <span>Incluir paquetes ya entregados o fallidos</span>
           </label>
 
           {routeStops.length === 0 ? (
-            <div className="bg-gray-50 border border-dashed border-gray-300 rounded-2xl p-6 text-center space-y-2">
-              <MapPin className="w-6 h-6 text-gray-400 mx-auto" />
-              <p className="text-xs font-bold text-gray-700">No hay paradas pendientes con ubicación</p>
-              <p className="text-[11px] text-gray-500">
+            <div className="bg-gray-50 dark:bg-slate-800/70 border border-dashed border-gray-300 dark:border-slate-700 rounded-2xl p-6 text-center space-y-2">
+              <MapPin className="w-6 h-6 text-gray-400 dark:text-slate-500 mx-auto" />
+              <p className="text-xs font-bold text-gray-700 dark:text-slate-200">No hay paradas pendientes con ubicación</p>
+              <p className="text-[11px] text-gray-500 dark:text-slate-400">
                 Agrega ubicación a tus paquetes o activa la casilla de arriba para incluir entregas anteriores.
               </p>
             </div>
@@ -192,7 +192,7 @@ export const ShareRouteModal: React.FC<ShareRouteModalProps> = ({
                 <button
                   type="button"
                   onClick={handleCopyRoute}
-                  className="bg-gray-900 hover:bg-gray-800 text-white py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors"
+                  className="bg-gray-900 dark:bg-slate-700 hover:bg-gray-800 dark:hover:bg-slate-600 text-white py-2.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-sm transition-colors"
                 >
                   {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
                   <span>{copied ? 'Copiado' : 'Copiar Lista'}</span>
@@ -214,12 +214,12 @@ export const ShareRouteModal: React.FC<ShareRouteModalProps> = ({
               )}
 
               {shareFeedback && (
-                <p className="text-xs font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-2 text-center">
+                <p className="text-xs font-semibold text-emerald-700 dark:text-emerald-200 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl px-3 py-2 text-center">
                   {shareFeedback}
                 </p>
               )}
 
-              <p className="text-[11px] text-gray-500 bg-sky-50/70 border border-sky-200 rounded-xl p-2.5 leading-relaxed">
+              <p className="text-[11px] text-gray-500 dark:text-sky-200/80 bg-sky-50/70 dark:bg-sky-950/35 border border-sky-200 dark:border-sky-800/60 rounded-xl p-2.5 leading-relaxed">
                 Waze solo admite 1 destino por enlace directo, pero aquí puedes compartir toda la ruta con todos los enlaces juntos o abrir cada parada en orden:
               </p>
 
@@ -228,16 +228,16 @@ export const ShareRouteModal: React.FC<ShareRouteModalProps> = ({
                 {routeStops.map((stop, idx) => (
                   <div
                     key={stop.id}
-                    className="flex items-center justify-between gap-2 p-2.5 bg-gray-50 rounded-xl border border-gray-200"
+                    className="flex items-center justify-between gap-2 p-2.5 bg-gray-50 dark:bg-slate-800/80 rounded-xl border border-gray-200 dark:border-slate-700"
                   >
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="w-6 h-6 bg-sky-100 text-sky-900 rounded-lg font-bold text-[11px] flex items-center justify-center shrink-0">
+                      <span className="w-6 h-6 bg-sky-100 dark:bg-sky-900/60 text-sky-900 dark:text-sky-200 rounded-lg font-bold text-[11px] flex items-center justify-center shrink-0">
                         {idx + 1}
                       </span>
                       <span className="bg-emerald-600 text-white font-black text-[11px] px-2 py-0.5 rounded-lg shrink-0">
                         #{stop.originalNumber}
                       </span>
-                      <span className="text-xs font-semibold text-gray-800 truncate">
+                      <span className="text-xs font-semibold text-gray-800 dark:text-slate-100 truncate">
                         {/^https?:\/\//i.test(stop.address.trim()) ? stop.province || 'Ubicación' : stop.address}
                       </span>
                     </div>
@@ -258,11 +258,11 @@ export const ShareRouteModal: React.FC<ShareRouteModalProps> = ({
         </div>
 
         {/* Footer */}
-        <div className="px-6 py-3.5 bg-gray-50 border-t border-gray-100 flex justify-end">
+        <div className="px-6 py-3.5 bg-gray-50 dark:bg-slate-800/80 border-t border-gray-100 dark:border-slate-800 flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2 rounded-xl text-xs font-bold text-gray-600 hover:bg-gray-200/60 transition-colors"
+            className="px-5 py-2 rounded-xl text-xs font-bold text-gray-600 dark:text-slate-300 hover:bg-gray-200/60 dark:hover:bg-slate-700/60 transition-colors"
           >
             Cerrar
           </button>

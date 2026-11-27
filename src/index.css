@@ -1,1 +1,55 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: light;
+}
+
+:root.dark {
+  color-scheme: dark;
+}
+
+html,
+body {
+  touch-action: pan-y;
+  overflow-x: hidden;
+  overscroll-behavior: none;
+  -webkit-text-size-adjust: 100%;
+}
+
+button,
+a,
+select {
+  touch-action: manipulation;
+}
+
+[data-allow-pan-x="true"] {
+  touch-action: pan-x;
+}
+
+[data-allow-map-zoom="true"],
+[data-allow-map-zoom="true"] .leaflet-container,
+[data-allow-map-zoom="true"] .leaflet-pane,
+[data-allow-map-zoom="true"] .leaflet-tile-pane,
+[data-allow-map-zoom="true"] .gm-style {
+  touch-action: none;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.dark .leaflet-container {
+  background: #0f172a;
+}
+
+.dark .leaflet-tile-pane {
+  filter: invert(100%) hue-rotate(180deg) brightness(94%) contrast(92%);
+}
+
+@media (pointer: coarse) {
+  input,
+  textarea,
+  select {
+    font-size: 16px;
+  }
+}
